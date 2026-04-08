@@ -8,7 +8,7 @@ Synopsis of Project: Consumers want to be entertained. With AI making it faster 
 
 | | | | | | 
 |---|---|---|---|---|
-| <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.PNG" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> |
+| <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.PNG" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="headshots/Headshot_Zaid.png" width="130"> |
 | Caleb | Annie | Tony | Rydham | Zaid 
 
 Member | Skills | Personal Traits | Desired Growth | Weaknesses | Email
