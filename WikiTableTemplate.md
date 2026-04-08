@@ -1,16 +1,21 @@
+# Home
+
 Team Name: CARTZ
 
 Team Logo: 🎮
 
-Team Music: Super Mario Theme Song
+## Synopsis of Project 
+Consumers want to be entertained. With AI making it faster to build and ship, we can create an infinite scroll of mini games that users can drop into instantly. Instead of passively watching, people are constantly interacting, moving from one short, lightweight game to the next.
 
-Synopsis of Project: Consumers want to be entertained. With AI making it faster to build and ship, we can create an infinite scroll of mini games that users can drop into instantly. Instead of passively watching, people are constantly interacting, moving from one short, lightweight game to the next.
-
+## Our Team
 | | | | | | 
 |---|---|---|---|---|
 | <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.PNG" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="headshots/Headshot_Zaid.png" width="130"> |
 | Caleb | Annie | Tony | Rydham | Zaid 
 
+Team Music: Super Mario Theme Song
+
+## Team Member Matrix
 Member | Skills | Personal Traits | Desired Growth | Weaknesses | Email
 --- | --- | --- | --- | --- | --- |
 Annie Lee | AI/ML, RL, NLP | Disciplined, creative, adaptable| Building front-end / full-stack | Sleep schedule | annieee@stanford.edu
