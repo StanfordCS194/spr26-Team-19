@@ -6,6 +6,11 @@ Team Music: Super Mario Theme Song
 
 Synopsis of Project: Consumers want to be entertained. With AI making it faster to build and ship, we can create an infinite scroll of mini games that users can drop into instantly. Instead of passively watching, people are constantly interacting, moving from one short, lightweight game to the next.
 
+| | | | | | 
+|---|---|---|---|---|
+| <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.JPG" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="path/to/heashot.png" width="130"> |
+| Caleb | Annie | Tony | Rydham | Zaid 
+
 Member | Skills | Personal Traits | Desired Growth | Weaknesses | Email
 --- | --- | --- | --- | --- | --- |
 Annie Lee | AI/ML, RL, NLP | Disciplined, creative, adaptable| Building front-end / full-stack | Sleep schedule | annieee@stanford.edu
