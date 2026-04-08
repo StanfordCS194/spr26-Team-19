@@ -17,4 +17,4 @@ Annie Lee | AI/ML, RL, NLP | Disciplined, creative, adaptable| Building front-en
 Tony Wang | Full-stack dev (Next.js, React, Postgres, etc.) + ML | Fast-moving | Shipping to production | Lower-level systems | wangtony@stanford.edu
 Rydham Goyal | AI, Machine Learning, Programming, GUI skills | Loves learning new programming languages | MatLAB | bad memory | rydham@stanford.edu
 Caleb Ketchum | Project Management, Familiarity with PCBs and breakout boards | Loves building things | Programming projects, team building | Short term memory | cketchum@stanford.edu
-Zaid Akhtar | Dynamics, Machining, Sales voice | Mediator, Delegator, Fun, Divergent Thinker | Management | Ideas require peer approval, short term memory | zaid26@stanford.edu
+Zaid Akhtar | Design/Frontend/Product | Love designing experiences/systems/things | Full-stack | Busy quarter, caught up in a lot | zaid26@stanford.edu
