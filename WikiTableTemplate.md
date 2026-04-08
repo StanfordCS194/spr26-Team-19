@@ -11,5 +11,5 @@ Member | Skills | Personal Traits | Desired Growth | Weaknesses
 Annie Lee | User testing, CAD, Statistical Data | Very sensitive to work environment | Programming | Programming
 Tony Wang | Full-stack dev (Next.js, React, Postgres, etc.) + ML | Fast-moving | Shipping to production | Lower-level systems
 Rydham Goyal | AI, Machine Learning, Programming, GUI skills | Loves learning new programming languages | MatLAB | bad memory
-Caleb Ketchum | Machine Learning, Audio recording, Signal processing, Statistical analysis | Strong opinions, very abstract thinker, Big PIcture guy | Rapid prototyping, project management | Sensitive to environments
+Caleb Ketchum | Project Management, Familiarity with PCBs and breakout boards | Loves building things | Programming projects, team building | Short term memory
 Zaid Akhtar | Dynamics, Machining, Sales voice | Mediator, Delegator, Fun, Divergent Thinker | Management | Ideas require peer approval, short term memory
