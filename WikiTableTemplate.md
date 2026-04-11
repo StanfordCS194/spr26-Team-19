@@ -10,7 +10,7 @@ Consumers want to be entertained. With AI making it faster to build and ship, we
 ## Our Team
 | | | | | | 
 |---|---|---|---|---|
-| <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.PNG" width="130"> | <img src="headshots/Headshot_Tony.jpg" width="130"> | <img src="path/to/heashot.png" width="130"> | <img src="headshots/Headshot_Zaid.png" width="130"> |
+| <img src="headshots/Headshot_Caleb.png" width="130"> | <img src="headshots/Headshot_Annie.PNG" width="130"> | <img src="headshots/Headshot_Tony.jpg" width="130"> | <img src="headshots/Headshot_Rydham.jpg" width="130"> | <img src="headshots/Headshot_Zaid.png" width="130"> |
 | Caleb | Annie | Tony | Rydham | Zaid 
 
 Team Music: Super Mario Theme Song
