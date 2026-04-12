@@ -23,3 +23,6 @@ Annie Lee | AI/ML, RL, NLP | Disciplined, creative, adaptable| Building front-en
 Tony Wang | Full-stack dev (Next.js, React, Postgres, etc.) + ML | Fast-moving | Shipping to production | Lower-level systems | wangtony@stanford.edu
 Rydham Goyal | AI, Machine Learning, Programming, GUI skills | Loves learning new programming languages | MatLAB | bad memory | rydham@stanford.edu
 Zaid Akhtar | Design/Frontend/Product | Love designing experiences/systems/things | Full-stack | Busy quarter, caught up in a lot | zaid26@stanford.edu
+
+## Links
+[PRD](https://docs.google.com/document/d/1DSFJ-804-Rw1qRl5CA5Q3PiY42QvwVhPpHxPb6t59dg/edit?usp=sharing)
