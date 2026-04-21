@@ -1,65 +1,98 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+
+
+// Initial Idea:
+// Keep two questions preloaded. As the user answers one question, the second is built
+// by an LLM and given to the user on the next call. While the user answers this question
+// the first question is rebuilt. The app then goes back and forth. This way the LLM runs
+// in the background and not at every 'Next Question' call. We can include a visual that runs
+// after a question is called (ie a character advancing forward) to 'hide' the LLM's runtime.
+
+// TODO:
+// - Add second question
+// - Add logic to switch back and forth
+// - Keep a log of questions and their difficulty
+// - Implement LLM question generation (prefetching)
+// - Prefetch on answer selection, not question load
+
+
+// Further thinking: Parrallel prefetching (3 questions),
+
+
+
+
+// QUESTION FORMAT
+const question = {
+  prompt: "What is the name of this App?",
+  choices: ["Dynamic-Ed", "Learn-In", "Adapt-Ed", "None of the Above"],
+  correctIndex: 2,
+};
+
+
+
 
 export default function Home() {
+  // Track which choice the user picked. null means "hasn't picked yet."
+  const [selected, setSelected] = useState<number | null>(null);
+
+  const hasAnswered = selected !== null;
+  const isCorrect = selected === question.correctIndex;
+
+  // Component Renders
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+      <div className="max-w-xl w-full bg-white rounded-lg shadow-md p-8">
+        <h1 className="text-2xl font-bold mb-6 text-gray-900">
+          {question.prompt}
+        </h1>
+
+        <div className="flex flex-col gap-3">
+          {question.choices.map((choice, index) => {
+            // Decide the button's color based on state.
+            let style = "border-gray-300 hover:bg-gray-100 text-gray-900";
+            if (hasAnswered) {
+              if (index === question.correctIndex) {
+                style = "border-green-500 bg-green-100 text-gray-900";
+              } else if (index === selected) {
+                style = "border-red-500 bg-red-100 text-gray-900";
+              } else {
+                style = "border-gray-200 text-gray-500";
+              }
+            }
+
+            return (
+              <button
+                key={index}
+                onClick={() => setSelected(index)}
+                disabled={hasAnswered}
+                className={`text-left p-4 border-2 rounded-md transition ${style}`}
+              >
+                {choice}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+
+        {hasAnswered && (
+          <div className="mt-6">
+            <p
+              className={`font-semibold ${
+                isCorrect ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {isCorrect ? "Correct!" : "Not quite — try again."}
+            </p>
+            <button
+              onClick={() => setSelected(null)}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Next question
+            </button>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
