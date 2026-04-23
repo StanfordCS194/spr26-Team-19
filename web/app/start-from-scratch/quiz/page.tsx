@@ -5,9 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
   prompt: string;
+  topic: string; 
   choices: string[];
   correctIndex: number;
   explanation: string;
+  hint: string; 
 };
 
 // Coding stage metadata for Pyodide runtime validation.
@@ -38,6 +40,7 @@ const TOTAL_MCQ = 5;
 const fallbackMcqBank: QuizQuestion[] = [
   {
     prompt: "What does indexing return in `arr[2]`?",
+    topic: "indexing",
     choices: [
       "A single element at position 2",
       "All elements from 0 to 2",
@@ -46,30 +49,39 @@ const fallbackMcqBank: QuizQuestion[] = [
     ],
     correctIndex: 0,
     explanation: "Indexing with one integer returns one element at that position.",
+    hint: "Focus on what a single integer index does: it selects one position, not a range.",
   },
   {
     prompt: "Given arr = [5, 10, 15, 20], what does `arr[1:3]` return?",
+    topic: "slicing",
     choices: ["[5, 10]", "[10, 15]", "[10, 15, 20]", "[15, 20]"],
     correctIndex: 1,
     explanation: "Slices include start and exclude end, so indices 1 and 2.",
+    hint: "Remember that slicing includes the start index but excludes the end index.",
   },
   {
     prompt: "For a 1D array with 6 elements, what is `arr.shape`?",
+    topic: "array shape",
     choices: ["(6)", "(6,)", "(1, 6)", "6"],
     correctIndex: 1,
     explanation: "A 1D NumPy array shape is represented as `(n,)`.",
+    hint: "A 1D NumPy shape is written as a tuple even if it has only one dimension.",
   },
   {
     prompt: "Which expression returns the last two elements of `arr`?",
+    topic: "slicing",
     choices: ["arr[:2]", "arr[2:]", "arr[-2:]", "arr[-1]"],
     correctIndex: 2,
     explanation: "Negative slicing with `-2:` selects the last two elements.",
+    hint: "Negative indices count backward from the end of the array.",
   },
   {
     prompt: "Which function returns a sorted copy of an array `a`?",
+    topic: "numpy functions",
     choices: ["a.sortcopy()", "np.sort(a)", "np.order(a)", "a.sorted()"],
     correctIndex: 1,
     explanation: "`np.sort(a)` returns a sorted copy.",
+    hint: "Think about the standard NumPy function for sorting without modifying the original array in place.",
   },
 ];
 
@@ -79,6 +91,7 @@ type GeneratedQuestionResponse = {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  hint?: string;
 };
 
 // Pyodide coding challenges run after MCQ stage.
@@ -162,6 +175,20 @@ export default function BasicsQuizPage() {
     () => mcqScore + codeScore,
     [mcqScore, codeScore],
   );
+  function getWeakTopics() {
+    return Object.entries(topicMistakes)
+      .sort((a, b) => b[1] - a[1])
+      .map(([topic]) => topic);
+  }
+  
+  function getRecommendedTopic() {
+    const weakTopics = getWeakTopics();
+    return weakTopics.length > 0 ? weakTopics[0] : null;
+  }
+  //Hint State 
+  const [showHint, setShowHint] = useState(false); 
+  //Mistake tracker 
+  const [topicMistakes, setTopicMistakes] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -249,6 +276,7 @@ export default function BasicsQuizPage() {
         choices: payload.choices.map(String),
         correctIndex: payload.correctIndex,
         explanation: payload.explanation,
+        hint: payload.hint?.trim() || "Consider the NumPy rule being tested here.",
       };
       // If duplicate prompt appears, fall back to local question for variety.
       if (existingPrompts.has(generated.prompt)) {
@@ -282,6 +310,11 @@ export default function BasicsQuizPage() {
     setSelected(choiceIndex);
     if (choiceIndex === question.correctIndex) {
       setMcqScore((prev) => prev + 1);
+    } else { //Track for mistakes
+      setTopicMistakes((prev) => ({
+        ...prev,
+        [question.topic]: (prev[question.topic] || 0) + 1,
+      }));
     }
     // Trigger background generation on answer selection (not on Next).
     void prefetchBufferedMcq();
@@ -307,6 +340,7 @@ export default function BasicsQuizPage() {
     setBufferedQuestion(null);
     setMcqGenerationStatus("idle");
     setIndex((prev) => prev + 1);
+    setShowHint(false);
   }
 
   function moveToCodingStage() {
@@ -317,6 +351,7 @@ export default function BasicsQuizPage() {
     setCodeInput(codingChallenges[0].starterCode);
     setRunStatus("idle");
     setRunMessage("");
+    setShowHint(false);
   }
 
   async function runCodeChallenge() {
@@ -395,8 +430,11 @@ export default function BasicsQuizPage() {
     setCodeInput(codingChallenges[0].starterCode);
     setRunStatus("idle");
     setRunMessage("");
+    setShowHint(false);
+    setTopicMistakes({});
   }
-
+  const recommendedTopic = getRecommendedTopic();
+  const weakTopics = getWeakTopics();
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
       <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
@@ -420,6 +458,25 @@ export default function BasicsQuizPage() {
             </p>
 
             <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
+
+            <div className="mt-4">
+              {!showHint ? (
+                <button
+                  className="px-4 py-2 border border-blue-600 text-blue-600 rounded hover:bg-blue-50"
+                  onClick={() => setShowHint(true)}
+                  disabled={hasAnswered}
+                >
+                  Show hint
+              </button>
+              )   : (
+                <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3">
+                  <p className="text-sm font-medium text-yellow-800">Hint</p>
+                  <p className="mt-1 text-sm text-gray-800">
+                    {question.hint}
+                  </p>
+                </div>
+              )}
+          </div>
 
             <div className="mt-4 flex flex-col gap-3">
               {question.choices.map((choice, choiceIndex) => {
@@ -552,6 +609,31 @@ export default function BasicsQuizPage() {
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               onClick={handleRestart}
             >
+            {weakTopics.length > 0 ? (
+              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
+                <p className="font-semibold text-gray-900">Topics to review</p>
+                <ul className="mt-2 list-disc list-inside text-gray-800">
+                  {weakTopics.map((topic) => (
+                    <li key={topic}>{topic}</li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-gray-900">
+                  Recommended next topic: <strong>{recommendedTopic}</strong>
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-4">
+                <p className="font-semibold text-gray-900">Great job!</p>
+                <p className="mt-1 text-gray-800">
+                  You did not show a clear weak area in this quiz.
+                </p>
+              </div>
+            )}
+
+            <button
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={handleRestart}
+            ></button>
               Retake full quiz
             </button>
           </div>
