@@ -1,0 +1,115 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
+type LevelQuestion = {
+  prompt: string;
+  topic: string;
+  difficulty: "easy" | "medium" | "hard";
+  choices: string[];
+  correctIndex: number;
+};
+
+const surveyQuestions: LevelQuestion[] = [
+  {
+    prompt: "What does `np.array([[1, 2], [3, 4]]).shape` return?",
+    topic: "array shape",
+    difficulty: "easy",
+    choices: ["(2, 2)", "(4,)", "(1, 4)", "2"],
+    correctIndex: 0,
+  },
+  {
+    prompt: "Which slicing expression selects the first column of a 2D array `a`?",
+    topic: "indexing",
+    difficulty: "medium",
+    choices: ["a[0, :]", "a[:, 0]", "a[0:0]", "a[:, :]"],
+    correctIndex: 1,
+  },
+  {
+    prompt:
+      "For arrays `a.shape == (3, 1)` and `b.shape == (1, 4)`, what is `(a + b).shape`?",
+    topic: "broadcasting",
+    difficulty: "hard",
+    choices: ["(3, 1)", "(1, 4)", "(3, 4)", "Broadcasting fails"],
+    correctIndex: 2,
+  },
+];
+
+export default function FindMyLevelPage() {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<number[]>([]);
+  const question = surveyQuestions[currentIndex];
+  const isComplete = currentIndex >= surveyQuestions.length;
+
+  const score = useMemo(() => {
+    return answers.reduce((total, answer, i) => {
+      return total + (answer === surveyQuestions[i].correctIndex ? 1 : 0);
+    }, 0);
+  }, [answers]);
+
+  function getRecommendedLevel() {
+    if (score <= 1) return "Beginner";
+    if (score === 2) return "Intermediate";
+    return "Advanced";
+  }
+
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+      <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
+        <a href="/" className="text-sm text-blue-600 hover:underline">
+          Back to path selection
+        </a>
+        <h1 className="mt-2 text-2xl font-bold text-gray-900">Find my level</h1>
+        <p className="mt-2 text-gray-600">
+          Quick NumPy diagnostic across topics and difficulty.
+        </p>
+
+        {!isComplete ? (
+          <div className="mt-6">
+            <p className="text-sm text-gray-500">
+              Question {currentIndex + 1} of {surveyQuestions.length} - Topic:{" "}
+              {question.topic} ({question.difficulty})
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-gray-900">
+              {question.prompt}
+            </h2>
+
+            <div className="mt-4 flex flex-col gap-3">
+              {question.choices.map((choice, choiceIndex) => (
+                <button
+                  key={choice}
+                  className="text-left p-4 border-2 rounded-md border-gray-300 hover:bg-gray-100 text-gray-900 transition"
+                  onClick={() => {
+                    setAnswers((prev) => [...prev, choiceIndex]);
+                    setCurrentIndex((prev) => prev + 1);
+                  }}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-md border border-blue-200 bg-blue-50 p-5">
+            <h2 className="text-xl font-semibold text-gray-900">Assessment complete</h2>
+            <p className="mt-2 text-gray-800">
+              You got {score} out of {surveyQuestions.length} correct.
+            </p>
+            <p className="mt-1 text-gray-800">
+              Recommended starting level: <strong>{getRecommendedLevel()}</strong>
+            </p>
+            <button
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={() => {
+                setAnswers([]);
+                setCurrentIndex(0);
+              }}
+            >
+              Retake survey
+            </button>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
