@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 type Difficulty = "easy" | "medium";
 
+// High-level content rails used to keep generated questions within beginner NumPy scope.
 const TOPIC_HINTS = [
   "What is an array?",
   "Array fundamentals",
@@ -20,6 +21,7 @@ type RequestBody = {
 };
 
 export async function POST(req: Request) {
+  // API key is resolved server-side only. The client never receives this secret.
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -28,10 +30,13 @@ export async function POST(req: Request) {
     );
   }
 
+  // Input from frontend controls question difficulty and optional topic de-duplication hints.
   const body = (await req.json()) as RequestBody;
   const preferEasy = Boolean(body.preferEasy);
   const targetDifficulty: Difficulty = preferEasy ? "easy" : "medium";
 
+  // We explicitly force a strict JSON schema in prompt form because this route is consumed
+  // programmatically by the quiz UI and needs predictable fields.
   const prompt = `
 Generate one beginner NumPy multiple-choice question as strict JSON.
 Difficulty target: ${targetDifficulty}.
@@ -50,6 +55,7 @@ Return ONLY JSON with this exact schema:
 No markdown, no code fences.
 `;
 
+  // Model can be overridden by env; fallback defaults to a smaller/cheaper model.
   const model = process.env.GROQ_MODEL ?? "groq/compound-mini";
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -60,6 +66,7 @@ No markdown, no code fences.
     body: JSON.stringify({
       model,
       temperature: 0.7,
+      // Ask the OpenAI-compatible endpoint for JSON-shaped output.
       response_format: { type: "json_object" },
       messages: [
         {
@@ -76,6 +83,7 @@ No markdown, no code fences.
   });
 
   if (!response.ok) {
+    // We return upstream body for debugging quota/model failures in local dev.
     const errorText = await response.text();
     console.error("Groq request failed", { model, errorText });
     return NextResponse.json(
@@ -84,6 +92,7 @@ No markdown, no code fences.
     );
   }
 
+  // Groq uses OpenAI-compatible chat response shape.
   const json = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
@@ -94,6 +103,7 @@ No markdown, no code fences.
   }
 
   try {
+    // Some providers occasionally wrap JSON with code fences; normalize before parse.
     const normalizedContent = content
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
@@ -107,6 +117,7 @@ No markdown, no code fences.
       explanation?: unknown;
     };
 
+    // Runtime schema guard: reject malformed model output before it reaches client UI.
     if (
       typeof parsed.topic !== "string" ||
       (parsed.difficulty !== "easy" && parsed.difficulty !== "medium") ||
@@ -125,6 +136,7 @@ No markdown, no code fences.
       );
     }
 
+    // Return only validated payload fields expected by quiz UI.
     return NextResponse.json(parsed);
   } catch (error) {
     console.error("Failed to parse Groq JSON output", { content, error });

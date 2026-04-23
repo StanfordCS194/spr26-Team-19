@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+// Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
   prompt: string;
   choices: string[];
@@ -9,6 +10,7 @@ type QuizQuestion = {
   explanation: string;
 };
 
+// Coding stage metadata for Pyodide runtime validation.
 type CodingChallenge = {
   id: string;
   prompt: string;
@@ -17,6 +19,7 @@ type CodingChallenge = {
   hint: string;
 };
 
+// Pyodide script adds a global loader to window; augment type for TS safety.
 declare global {
   interface Window {
     loadPyodide?: (options?: { indexURL?: string }) => Promise<PyodideLike>;
@@ -28,8 +31,10 @@ type PyodideLike = {
   loadPackage: (pkg: string) => Promise<void>;
 };
 
+// MCQ stage is capped intentionally to keep quiz duration predictable.
 const TOTAL_MCQ = 5;
 
+// Local fallback bank used when LLM generation fails/rate-limits/duplicates.
 const fallbackMcqBank: QuizQuestion[] = [
   {
     prompt: "What does indexing return in `arr[2]`?",
@@ -68,6 +73,7 @@ const fallbackMcqBank: QuizQuestion[] = [
   },
 ];
 
+// Expected response shape from /api/generate-question endpoint.
 type GeneratedQuestionResponse = {
   prompt: string;
   choices: string[];
@@ -75,6 +81,7 @@ type GeneratedQuestionResponse = {
   explanation: string;
 };
 
+// Pyodide coding challenges run after MCQ stage.
 const codingChallenges: CodingChallenge[] = [
   {
     id: "slice-1d",
@@ -104,39 +111,52 @@ answer = None`,
 ];
 
 export default function BasicsQuizPage() {
+  // Top-level finite state machine for assessment progression.
   const [phase, setPhase] = useState<"mcq" | "code" | "complete">("mcq");
+  // 2-slot + buffer pipeline:
+  // - currentQuestion: visible now
+  // - prefetchedQuestion: next question ready immediately
+  // - bufferedQuestion: newly generated in background after answer selection
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion>(fallbackMcqBank[0]!);
   const [prefetchedQuestion, setPrefetchedQuestion] = useState<QuizQuestion>(
     fallbackMcqBank[1] ?? fallbackMcqBank[0]!,
   );
   const [bufferedQuestion, setBufferedQuestion] = useState<QuizQuestion | null>(null);
+  // Track prompts to reduce duplicates from model generation.
   const [seenPrompts, setSeenPrompts] = useState<string[]>([
     fallbackMcqBank[0]!.prompt,
     (fallbackMcqBank[1] ?? fallbackMcqBank[0]!).prompt,
   ]);
+  // Status for generation source visibility in UI.
   const [isPrefetchingMcq, setIsPrefetchingMcq] = useState(false);
   const [mcqGenerationStatus, setMcqGenerationStatus] = useState<
     "idle" | "generated" | "fallback"
   >("idle");
+  // MCQ stage state.
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [mcqScore, setMcqScore] = useState(0);
+  // Coding stage state.
   const [codeIndex, setCodeIndex] = useState(0);
+  // passedChallengeIds tracks completion; firstTryPassedIds drives score.
   const [passedChallengeIds, setPassedChallengeIds] = useState<string[]>([]);
   const [firstTryPassedIds, setFirstTryPassedIds] = useState<string[]>([]);
   const [challengeAttempts, setChallengeAttempts] = useState<Record<string, number>>({});
   const [codeInput, setCodeInput] = useState(codingChallenges[0].starterCode);
+  // Runtime execution and messaging state for Pyodide code runner.
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
+  // pyodide and loading flags are used to gate run buttons and show runtime status.
   const [pyodide, setPyodide] = useState<PyodideLike | null>(null);
   const [pyodideLoading, setPyodideLoading] = useState(true);
   const [pyodideError, setPyodideError] = useState("");
 
-  const question = currentQuestion;
+  const question = currentQuestion; // Alias for readability in JSX.
   const hasAnswered = selected !== null;
   const isCorrect = selected === question.correctIndex;
   const isLastQuestion = index === TOTAL_MCQ - 1;
   const codeChallenge = codingChallenges[codeIndex]!;
+  // Code score is first-try-only by design.
   const codeScore = firstTryPassedIds.length;
   const totalScore = useMemo(
     () => mcqScore + codeScore,
@@ -148,6 +168,7 @@ export default function BasicsQuizPage() {
 
     async function loadPyodideRuntime() {
       try {
+        // Inject Pyodide script lazily on client if missing.
         if (!window.loadPyodide) {
           const script = document.createElement("script");
           script.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
@@ -166,6 +187,7 @@ export default function BasicsQuizPage() {
         const runtime = await window.loadPyodide({
           indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
         });
+        // Load numpy package once so coding challenges can execute NumPy code.
         await runtime.loadPackage("numpy");
         if (!cancelled) {
           setPyodide(runtime);
@@ -188,10 +210,12 @@ export default function BasicsQuizPage() {
   }, []);
 
   function normalizeOutput(raw: string): string {
+    // Normalize superficial formatting differences before output comparison.
     return raw.trim().replace(/\s+/g, "");
   }
 
   function getFallbackQuestion(existingPrompts: Set<string>): QuizQuestion {
+    // Prefer unseen fallback prompts first, otherwise allow reuse.
     const candidate = fallbackMcqBank.find((item) => !existingPrompts.has(item.prompt));
     return candidate ?? fallbackMcqBank[Math.floor(Math.random() * fallbackMcqBank.length)]!;
   }
@@ -200,6 +224,7 @@ export default function BasicsQuizPage() {
     existingPrompts: Set<string>,
   ): Promise<{ question: QuizQuestion; source: "generated" | "fallback" }> {
     try {
+      // MCQ generation is delegated to server endpoint (which calls provider model).
       const response = await fetch("/api/generate-question", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -225,16 +250,19 @@ export default function BasicsQuizPage() {
         correctIndex: payload.correctIndex,
         explanation: payload.explanation,
       };
+      // If duplicate prompt appears, fall back to local question for variety.
       if (existingPrompts.has(generated.prompt)) {
         return { question: getFallbackQuestion(existingPrompts), source: "fallback" };
       }
       return { question: generated, source: "generated" };
     } catch {
+      // Any provider/network/schema failure gracefully downgrades to fallback.
       return { question: getFallbackQuestion(existingPrompts), source: "fallback" };
     }
   }
 
   async function prefetchBufferedMcq() {
+    // Only prefetch during MCQ stage and only when not on terminal MCQ.
     if (phase !== "mcq" || isLastQuestion || isPrefetchingMcq) return;
     setIsPrefetchingMcq(true);
     const existingPrompts = new Set(seenPrompts);
@@ -249,11 +277,13 @@ export default function BasicsQuizPage() {
   }
 
   function handleSelect(choiceIndex: number) {
+    // Lock answer after first selection to avoid double-scoring.
     if (hasAnswered) return;
     setSelected(choiceIndex);
     if (choiceIndex === question.correctIndex) {
       setMcqScore((prev) => prev + 1);
     }
+    // Trigger background generation on answer selection (not on Next).
     void prefetchBufferedMcq();
   }
 
@@ -261,7 +291,9 @@ export default function BasicsQuizPage() {
     if (isLastQuestion) return;
     setSelected(null);
     const existingPrompts = new Set(seenPrompts);
+    // Promote prefetched -> current immediately for snappy UX.
     const nextCurrent = prefetchedQuestion ?? getFallbackQuestion(existingPrompts);
+    // Promote buffered -> prefetched for next hop in the pipeline.
     const nextPrefetched =
       bufferedQuestion ?? getFallbackQuestion(new Set([...existingPrompts, nextCurrent.prompt]));
     setCurrentQuestion(nextCurrent);
@@ -278,6 +310,7 @@ export default function BasicsQuizPage() {
   }
 
   function moveToCodingStage() {
+    // Transition from MCQ stage to executable coding stage.
     setPhase("code");
     setSelected(null);
     setCodeIndex(0);
@@ -290,10 +323,12 @@ export default function BasicsQuizPage() {
     if (!pyodide) return;
     setRunStatus("running");
     setRunMessage("Running code...");
+    // We track attempts to compute first-try-only scoring.
     const attemptsSoFar = challengeAttempts[codeChallenge.id] ?? 0;
     setChallengeAttempts((prev) => ({ ...prev, [codeChallenge.id]: attemptsSoFar + 1 }));
 
     try {
+      // Convention: learner sets `answer`; we evaluate repr(answer) for deterministic compare.
       const result = await pyodide.runPythonAsync(`${codeInput}\nrepr(answer)`);
       const output = String(result).trim();
       const normalizedOutput = normalizeOutput(output);
@@ -307,10 +342,12 @@ export default function BasicsQuizPage() {
           : `Output was ${output}. Expected one of: ${codeChallenge.expectedOutputs.join(" or ")}.`,
       );
       if (passed) {
+        // Completion tracking (any attempt).
         setPassedChallengeIds((prev) => {
           if (prev.includes(codeChallenge.id)) return prev;
           return [...prev, codeChallenge.id];
         });
+        // First-try scoring only increments if this was attempt #1.
         if (attemptsSoFar === 0) {
           setFirstTryPassedIds((prev) => {
             if (prev.includes(codeChallenge.id)) return prev;
@@ -327,6 +364,7 @@ export default function BasicsQuizPage() {
   }
 
   function nextCodeChallenge() {
+    // Advance coding challenge pointer or complete quiz if done.
     if (codeIndex === codingChallenges.length - 1) {
       setPhase("complete");
       return;
@@ -339,6 +377,7 @@ export default function BasicsQuizPage() {
   }
 
   function handleRestart() {
+    // Full session reset across both MCQ and coding phases.
     setPhase("mcq");
     setCurrentQuestion(fallbackMcqBank[0]!);
     setPrefetchedQuestion(fallbackMcqBank[1] ?? fallbackMcqBank[0]!);

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+// Fixed arrays used for deterministic visuals in the beginner playground.
 const sampleArray = [5, 10, 15, 20, 25, 30];
 const sampleMatrix = [
   [1, 2, 3, 4],
@@ -9,6 +10,7 @@ const sampleMatrix = [
   [9, 10, 11, 12],
 ];
 
+// Metadata for each teach-and-practice section shown in the reference area.
 type SectionPractice = {
   id: string;
   title: string;
@@ -21,6 +23,7 @@ type SectionPractice = {
   outputPreview: string;
 };
 
+// Structured curriculum cards: explanation + code + task + validation metadata.
 const referenceSections: SectionPractice[] = [
   {
     id: "import",
@@ -135,6 +138,8 @@ c = a.copy()    # deep copy`,
 ];
 
 function parseArrayInput(raw: string): number[] {
+  // Parse comma-separated numeric input for custom visual builder.
+  // Invalid numbers are dropped so we always render safe numeric arrays.
   return raw
     .split(",")
     .map((part) => part.trim())
@@ -144,27 +149,36 @@ function parseArrayInput(raw: string): number[] {
 }
 
 export default function StartFromScratchPage() {
+  // 1D interaction state.
   const [selectedIndex, setSelectedIndex] = useState(2);
   const [sliceStart, setSliceStart] = useState(1);
   const [sliceEnd, setSliceEnd] = useState(4);
+  // 2D interaction state.
   const [selectedRow, setSelectedRow] = useState(1);
   const [selectedCol, setSelectedCol] = useState(2);
+  // Freeform input for custom array visual.
   const [customArrayInput, setCustomArrayInput] = useState("3, 8, 13, 21");
+  // Practice panel state: learner code and pass/fail status per section.
   const [practiceAnswers, setPracticeAnswers] = useState<Record<string, string>>({});
   const [practiceResults, setPracticeResults] = useState<
     Record<string, "pass" | "fail" | undefined>
   >({});
+  // Controls on-demand reveal of example solutions (hidden by default).
   const [revealedSolutions, setRevealedSolutions] = useState<Record<string, boolean>>({});
+
+  // Derived values used by live visuals.
   const indexValue = sampleArray[selectedIndex];
   const sliceValue = sampleArray.slice(sliceStart, sliceEnd);
   const matrixValue = sampleMatrix[selectedRow][selectedCol];
   const customArray = parseArrayInput(customArrayInput);
 
   function normalizeAnswer(raw: string): string {
+    // Loose normalization for small syntax/spacing differences in typed practice answers.
     return raw.trim().replace(/\s+/g, " ").toLowerCase();
   }
 
   function checkSectionAnswer(section: SectionPractice) {
+    // Compare learner input against accepted canonical variants for each section task.
     const typed = practiceAnswers[section.id] ?? "";
     const normalized = normalizeAnswer(typed);
     const isPass = section.acceptedAnswers.some(
@@ -172,6 +186,10 @@ export default function StartFromScratchPage() {
     );
     setPracticeResults((prev) => ({ ...prev, [section.id]: isPass ? "pass" : "fail" }));
   }
+
+  // Helper text reused for section cards to make expectations explicit for learners.
+  const practiceGuidance =
+    "Type the exact code line, then press Check. Matching is syntax-aware but not full Python execution.";
 
   return (
     <main className="min-h-screen p-6 bg-gray-50">
@@ -437,6 +455,7 @@ export default function StartFromScratchPage() {
 
                 <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
                   <p className="text-sm text-gray-900">{section.prompt}</p>
+                  <p className="mt-1 text-xs text-gray-800">{practiceGuidance}</p>
                   <textarea
                     value={practiceAnswers[section.id] ?? ""}
                     onChange={(event) => {
@@ -531,6 +550,37 @@ export default function StartFromScratchPage() {
               Add at least one valid number (for example: 2, 5, 8).
             </p>
           )}
+        </section>
+
+        <section className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-6">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Common mistakes / misconceptions
+          </h2>
+          <ul className="mt-3 space-y-2 text-sm text-gray-900 list-disc list-inside">
+            <li>
+              <span className="font-semibold">Off-by-one slicing:</span> in
+              <code> arr[start:end] </code>, the <code>end</code> index is not
+              included.
+            </li>
+            <li>
+              <span className="font-semibold">Indexing starts at 0:</span> the
+              first element is <code>arr[0]</code>, not <code>arr[1]</code>.
+            </li>
+            <li>
+              <span className="font-semibold">1D shape formatting:</span> a
+              1D array with 6 values has shape <code>(6,)</code>, including the
+              trailing comma.
+            </li>
+            <li>
+              <span className="font-semibold">2D index order:</span> NumPy uses
+              <code>arr[row, col]</code> (row first, column second).
+            </li>
+            <li>
+              <span className="font-semibold">View vs copy:</span> slices often
+              create views, so editing them can mutate the original array.
+              Use <code>.copy()</code> for an independent version.
+            </li>
+          </ul>
         </section>
 
         <section id="quiz-next" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">

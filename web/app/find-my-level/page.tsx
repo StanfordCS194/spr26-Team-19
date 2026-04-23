@@ -10,6 +10,7 @@ type LevelQuestion = {
   correctIndex: number;
 };
 
+// Starter diagnostic set. This can later be replaced or expanded by DB/LLM-generated content.
 const surveyQuestions: LevelQuestion[] = [
   {
     prompt: "What does `np.array([[1, 2], [3, 4]]).shape` return?",
@@ -36,11 +37,14 @@ const surveyQuestions: LevelQuestion[] = [
 ];
 
 export default function FindMyLevelPage() {
+  // currentIndex points to active diagnostic prompt.
   const [currentIndex, setCurrentIndex] = useState(0);
+  // answers stores the choice index selected per question in order.
   const [answers, setAnswers] = useState<number[]>([]);
   const question = surveyQuestions[currentIndex];
   const isComplete = currentIndex >= surveyQuestions.length;
 
+  // Score is derived from answer history and reference correct indexes.
   const score = useMemo(() => {
     return answers.reduce((total, answer, i) => {
       return total + (answer === surveyQuestions[i].correctIndex ? 1 : 0);
@@ -48,6 +52,7 @@ export default function FindMyLevelPage() {
   }, [answers]);
 
   function getRecommendedLevel() {
+    // Lightweight rubric: intended as a placeholder until adaptive model routing is added.
     if (score <= 1) return "Beginner";
     if (score === 2) return "Intermediate";
     return "Advanced";
@@ -80,6 +85,7 @@ export default function FindMyLevelPage() {
                   key={choice}
                   className="text-left p-4 border-2 rounded-md border-gray-300 hover:bg-gray-100 text-gray-900 transition"
                   onClick={() => {
+                    // Record answer then advance linearly to next prompt.
                     setAnswers((prev) => [...prev, choiceIndex]);
                     setCurrentIndex((prev) => prev + 1);
                   }}
@@ -101,6 +107,7 @@ export default function FindMyLevelPage() {
             <button
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               onClick={() => {
+                // Reset full diagnostic session state for retakes.
                 setAnswers([]);
                 setCurrentIndex(0);
               }}
