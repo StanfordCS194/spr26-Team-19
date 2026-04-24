@@ -640,10 +640,6 @@ export default function BasicsQuizPage() {
             <p className="mt-1 font-semibold text-gray-900">
               Total score: {totalScore} / {TOTAL_MCQ + codingChallenges.length}
             </p>
-            <button
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              onClick={handleRestart}
-            >
             {weakTopics.length > 0 ? (
               <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
                 <p className="font-semibold text-gray-900">Topics to review</p>
@@ -668,7 +664,7 @@ export default function BasicsQuizPage() {
             <button
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               onClick={handleRestart}
-            ></button>
+            >
               Retake full quiz
             </button>
           </div>
