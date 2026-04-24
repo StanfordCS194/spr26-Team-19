@@ -17,6 +17,7 @@ const TOPIC_HINTS = [
 
 type RequestBody = {
   previousTopic?: string;
+  focusTopic?: string;
   preferEasy?: boolean;
 };
 
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
 Generate one beginner NumPy multiple-choice question as strict JSON.
 Difficulty target: ${targetDifficulty}.
 Avoid repeating this topic if possible: ${body.previousTopic ?? "none"}.
+If provided, prioritize this weak topic for extra practice: ${body.focusTopic ?? "none"}.
 Use these topics: ${TOPIC_HINTS.join("; ")}.
 
 Return ONLY JSON with this exact schema:
