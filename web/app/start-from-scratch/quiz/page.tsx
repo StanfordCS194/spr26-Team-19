@@ -87,11 +87,18 @@ const fallbackMcqBank: QuizQuestion[] = [
 
 // Expected response shape from /api/generate-question endpoint.
 type GeneratedQuestionResponse = {
+  topic: string;
   prompt: string;
   choices: string[];
   correctIndex: number;
   explanation: string;
   hint?: string;
+};
+
+type mcqGenerationRequest = {
+  preferEasy: boolean;
+  previousTopic?: string;
+  focusTopic?: string;
 };
 
 // Pyodide coding challenges run after MCQ stage.
@@ -190,6 +197,26 @@ export default function BasicsQuizPage() {
   //Mistake tracker 
   const [topicMistakes, setTopicMistakes] = useState<Record<string, number>>({});
 
+  function buildAdaptiveGenerationRequest(answerWasCorrect?: boolean): mcqGenerationRequest {
+    const projectedMistakes = { ...topicMistakes };
+    
+    if (answerWasCorrect === false) {
+      projectedMistakes[question.topic] = (projectedMistakes[question.topic] ?? 0) + 1;
+    }
+    const weakTopic = Object.entries(projectedMistakes).sort((a, b) => b[1] - a[1])[0]?.[0];
+    
+    const attemptedCount = index + (answerWasCorrect === undefined ? 0 : 1);
+    const projectedScore = mcqScore + (answerWasCorrect ? 1 : 0);
+    const projectedAccuracy = attemptedCount === 0 ? 1 : projectedScore / attemptedCount;
+
+    return {
+      // Stay easy early or when accuracy drops; otherwise allow medium questions.
+      preferEasy: attemptedCount < 2 || projectedAccuracy < 0.7,
+      previousTopic: question.topic,
+      focusTopic: weakTopic,
+    };
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -249,18 +276,20 @@ export default function BasicsQuizPage() {
 
   async function fetchGeneratedMcq(
     existingPrompts: Set<string>,
+    generationRequest: mcqGenerationRequest,
   ): Promise<{ question: QuizQuestion; source: "generated" | "fallback" }> {
     try {
       // MCQ generation is delegated to server endpoint (which calls provider model).
       const response = await fetch("/api/generate-question", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferEasy: true }),
+        body: JSON.stringify(generationRequest),
       });
       if (!response.ok) throw new Error("MCQ generation request failed");
       const payload = (await response.json()) as GeneratedQuestionResponse;
       if (
         !payload ||
+        typeof payload.topic !== "string" ||
         typeof payload.prompt !== "string" ||
         !Array.isArray(payload.choices) ||
         payload.choices.length !== 4 ||
@@ -272,7 +301,7 @@ export default function BasicsQuizPage() {
         throw new Error("Invalid MCQ payload");
       }
       const generated: QuizQuestion = {
-        topic: "generated question",
+        topic: payload.topic,
         prompt: payload.prompt,
         choices: payload.choices.map(String),
         correctIndex: payload.correctIndex,
@@ -290,12 +319,15 @@ export default function BasicsQuizPage() {
     }
   }
 
-  async function prefetchBufferedMcq() {
+  async function prefetchBufferedMcq(answerWasCorrect? : boolean) {
     // Only prefetch during MCQ stage and only when not on terminal MCQ.
     if (phase !== "mcq" || isLastQuestion || isPrefetchingMcq) return;
     setIsPrefetchingMcq(true);
     const existingPrompts = new Set(seenPrompts);
-    const result = await fetchGeneratedMcq(existingPrompts);
+    const result = await fetchGeneratedMcq(
+      existingPrompts,
+      buildAdaptiveGenerationRequest(answerWasCorrect),
+    );
     const nextQuestion = result.question;
     setBufferedQuestion(nextQuestion);
     setMcqGenerationStatus(result.source);
@@ -309,7 +341,9 @@ export default function BasicsQuizPage() {
     // Lock answer after first selection to avoid double-scoring.
     if (hasAnswered) return;
     setSelected(choiceIndex);
-    if (choiceIndex === question.correctIndex) {
+    const answerWasCorrect = choiceIndex === question.correctIndex;
+
+    if (answerWasCorrect) {
       setMcqScore((prev) => prev + 1);
     } else { //Track for mistakes
       setTopicMistakes((prev) => ({
@@ -318,7 +352,7 @@ export default function BasicsQuizPage() {
       }));
     }
     // Trigger background generation on answer selection (not on Next).
-    void prefetchBufferedMcq();
+    void prefetchBufferedMcq(answerWasCorrect);
   }
 
   function handleNext() {
