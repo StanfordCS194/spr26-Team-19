@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PythonCodeBlock, PythonCodeEditor } from "@/components/python-code";
 
 // Fixed arrays used for deterministic visuals in the beginner playground.
 const sampleArray = [5, 10, 15, 20, 25, 30];
@@ -449,23 +450,22 @@ export default function StartFromScratchPage() {
               <div key={section.id} className="rounded-md border border-gray-200 bg-gray-50 p-4">
                 <h3 className="font-semibold text-gray-900">{section.title}</h3>
                 <p className="mt-2 text-sm text-gray-800">{section.description}</p>
-                <pre className="mt-2 rounded-md bg-gray-100 border border-gray-300 p-3 text-sm text-gray-900 overflow-x-auto">
-                  <code>{section.code}</code>
-                </pre>
+                <div className="mt-2 rounded-md border border-gray-300 overflow-x-auto text-sm">
+                  <PythonCodeBlock code={section.code} />
+                </div>
 
                 <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
                   <p className="text-sm text-gray-900">{section.prompt}</p>
                   <p className="mt-1 text-xs text-gray-800">{practiceGuidance}</p>
-                  <textarea
+                  <PythonCodeEditor
+                    className="mt-2 w-full rounded-md border border-gray-300 overflow-hidden"
+                    minHeight="5.5rem"
+                    modelPath={`/learn/practice/${section.id}.py`}
                     value={practiceAnswers[section.id] ?? ""}
-                    onChange={(event) => {
-                      const value = event.target.value;
+                    onChange={(value) => {
                       setPracticeAnswers((prev) => ({ ...prev, [section.id]: value }));
                       setPracticeResults((prev) => ({ ...prev, [section.id]: undefined }));
                     }}
-                    placeholder="Type code here (for example: a = np.array([1, 2, 3]))"
-                    className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-900 font-mono"
-                    rows={2}
                   />
                   <div className="mt-2 flex items-center gap-3">
                     <button

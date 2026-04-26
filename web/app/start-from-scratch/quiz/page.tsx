@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PythonCodeEditor } from "@/components/python-code";
+import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
@@ -19,18 +21,6 @@ type CodingChallenge = {
   starterCode: string;
   expectedOutputs: string[];
   hint: string;
-};
-
-// Pyodide script adds a global loader to window; augment type for TS safety.
-declare global {
-  interface Window {
-    loadPyodide?: (options?: { indexURL?: string }) => Promise<PyodideLike>;
-  }
-}
-
-type PyodideLike = {
-  runPythonAsync: (code: string) => Promise<unknown>;
-  loadPackage: (pkg: string) => Promise<void>;
 };
 
 // MCQ stage is capped intentionally to keep quiz duration predictable.
@@ -166,10 +156,10 @@ export default function BasicsQuizPage() {
   // Runtime execution and messaging state for Pyodide code runner.
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
-  // pyodide and loading flags are used to gate run buttons and show runtime status.
-  const [pyodide, setPyodide] = useState<PyodideLike | null>(null);
+  // Pyodide runs in a Web Worker (public/workers/pyodide-runner.js) so the main thread UI stays smooth.
   const [pyodideLoading, setPyodideLoading] = useState(true);
   const [pyodideError, setPyodideError] = useState("");
+  const canRunPython = !pyodideLoading && !pyodideError;
 
   const question = currentQuestion; // Alias for readability in JSX.
   const hasAnswered = selected !== null;
@@ -219,45 +209,20 @@ export default function BasicsQuizPage() {
 
   useEffect(() => {
     let cancelled = false;
-
-    async function loadPyodideRuntime() {
-      try {
-        // Inject Pyodide script lazily on client if missing.
-        if (!window.loadPyodide) {
-          const script = document.createElement("script");
-          script.src = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js";
-          script.async = true;
-          document.body.appendChild(script);
-          await new Promise<void>((resolve, reject) => {
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error("Failed to load Pyodide script"));
-          });
-        }
-
-        if (!window.loadPyodide) {
-          throw new Error("Pyodide loader is unavailable.");
-        }
-
-        const runtime = await window.loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/",
-        });
-        // Load numpy package once so coding challenges can execute NumPy code.
-        await runtime.loadPackage("numpy");
-        if (!cancelled) {
-          setPyodide(runtime);
-          setPyodideLoading(false);
-        }
-      } catch (error) {
+    setPyodideError("");
+    setPyodideLoading(true);
+    void ensurePyodideWorker()
+      .then(() => {
+        if (!cancelled) setPyodideLoading(false);
+      })
+      .catch((error) => {
         if (!cancelled) {
           setPyodideError(
             error instanceof Error ? error.message : "Failed to initialize code runner.",
           );
           setPyodideLoading(false);
         }
-      }
-    }
-
-    void loadPyodideRuntime();
+      });
     return () => {
       cancelled = true;
     };
@@ -390,7 +355,7 @@ export default function BasicsQuizPage() {
   }
 
   async function runCodeChallenge() {
-    if (!pyodide) return;
+    if (!canRunPython) return;
     setRunStatus("running");
     setRunMessage("Running code...");
     // We track attempts to compute first-try-only scoring.
@@ -399,17 +364,27 @@ export default function BasicsQuizPage() {
 
     try {
       // Convention: learner sets `answer`; we evaluate repr(answer) for deterministic compare.
-      const result = await pyodide.runPythonAsync(`${codeInput}\nrepr(answer)`);
-      const output = String(result).trim();
+      // Execution happens in a Web Worker; print() is captured and shown as program output.
+      const exec = await runPythonInWorker(`${codeInput}\nrepr(answer)`);
+      if (!exec.ok) {
+        setRunStatus("fail");
+        setRunMessage(`Execution error: ${exec.error}`);
+        return;
+      }
+      const output = exec.result.trim();
+      const printed = exec.stdout.trim();
       const normalizedOutput = normalizeOutput(output);
       const passed = codeChallenge.expectedOutputs.some(
         (expected) => normalizeOutput(expected) === normalizedOutput,
       );
       setRunStatus(passed ? "pass" : "fail");
+      const printLine = printed
+        ? ` Program output: ${printed}`
+        : "";
       setRunMessage(
         passed
-          ? `Passed. Output: ${output}`
-          : `Output was ${output}. Expected one of: ${codeChallenge.expectedOutputs.join(" or ")}.`,
+          ? `Passed. Value: ${output}.${printLine}`
+          : `Value was ${output}. Expected one of: ${codeChallenge.expectedOutputs.join(" or ")}.${printLine}`,
       );
       if (passed) {
         // Completion tracking (any attempt).
@@ -590,17 +565,19 @@ export default function BasicsQuizPage() {
               </p>
             )}
 
-            <textarea
+            <PythonCodeEditor
+              className="mt-4 w-full rounded-md border border-gray-300 overflow-hidden"
+              minHeight="12rem"
+              modelPath={`/quiz/numpy-basics-challenge-${codeIndex}.py`}
               value={codeInput}
-              onChange={(event) => setCodeInput(event.target.value)}
-              className="mt-4 w-full min-h-48 rounded-md border border-gray-300 bg-gray-50 p-3 font-mono text-sm text-gray-900"
+              onChange={setCodeInput}
             />
 
             <div className="mt-4 flex items-center gap-3">
               <button
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 onClick={runCodeChallenge}
-                disabled={pyodideLoading || !pyodide || runStatus === "running"}
+                disabled={!canRunPython || runStatus === "running"}
               >
                 {runStatus === "running" ? "Running..." : "Run and validate"}
               </button>
