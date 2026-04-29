@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { PythonCodeBlock, PythonCodeEditor } from "@/components/python-code";
 
 // Fixed arrays used for deterministic visuals in the beginner playground.
@@ -193,12 +194,15 @@ export default function StartFromScratchPage() {
     "Type the exact code line, then press Check. Matching is syntax-aware but not full Python execution.";
 
   return (
-    <main className="min-h-screen p-6 bg-gray-50">
+    <main className="min-h-screen p-6">
       <div className="mx-auto max-w-6xl">
-        <a href="/" className="text-sm text-blue-600 hover:underline">
+        <Link
+          href="/"
+          className="text-sm text-pink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 rounded"
+        >
           Back to path selection
-        </a>
-        <h1 className="mt-2 text-3xl font-bold text-gray-900">
+        </Link>
+        <h1 className="mt-2 text-3xl font-bold text-gray-900 tracking-tight">
           NumPy Basics Playground
         </h1>
         <p className="mt-2 text-gray-800 max-w-3xl">
@@ -207,35 +211,44 @@ export default function StartFromScratchPage() {
           slicing selects ranges of values.
         </p>
 
-        <nav className="mt-4 sticky top-3 z-10 rounded-lg border border-gray-200 bg-white/95 backdrop-blur p-3 shadow-sm">
+        <nav className="mt-4 sticky top-3 z-10 rounded-xl border border-slate-200/80 bg-white/60 backdrop-blur p-3 shadow-sm ring-1 ring-slate-200">
           <p className="text-sm font-semibold text-gray-900">Jump to section</p>
           <div className="mt-2 flex flex-wrap gap-2 text-sm">
-            <a href="#quick-concepts" className="text-blue-700 hover:underline">
+            <a href="#quick-concepts" className="text-pink-700 hover:underline">
               Quick concepts
             </a>
-            <a href="#indexing-slicing" className="text-blue-700 hover:underline">
+            <a
+              href="#indexing-slicing"
+              className="text-pink-700 hover:underline"
+            >
               Indexing & slicing
             </a>
-            <a href="#live-visual" className="text-blue-700 hover:underline">
+            <a href="#live-visual" className="text-pink-700 hover:underline">
               Live visual
             </a>
-            <a href="#two-d-playground" className="text-blue-700 hover:underline">
+            <a
+              href="#two-d-playground"
+              className="text-pink-700 hover:underline"
+            >
               2D indexing
             </a>
-            <a href="#reference" className="text-blue-700 hover:underline">
+            <a href="#reference" className="text-pink-700 hover:underline">
               Reference
             </a>
-            <a href="#custom-array" className="text-blue-700 hover:underline">
+            <a href="#custom-array" className="text-pink-700 hover:underline">
               Create array
             </a>
-            <a href="#quiz-next" className="text-blue-700 hover:underline">
+            <a href="#quiz-next" className="text-pink-700 hover:underline">
               Quiz
             </a>
           </div>
         </nav>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <section id="quick-concepts" className="rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+          <section
+            id="quick-concepts"
+            className="rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+          >
             <h2 className="text-xl font-semibold text-gray-900">
               Quick concepts
             </h2>
@@ -257,7 +270,7 @@ export default function StartFromScratchPage() {
                 is <code>(n,)</code> where <code>n</code> is element count.
               </li>
             </ul>
-            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3">
+            <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/40 p-4">
               <p className="font-mono text-sm text-gray-800">
                 arr = np.array([{sampleArray.join(", ")}])
               </p>
@@ -267,7 +280,10 @@ export default function StartFromScratchPage() {
             </div>
           </section>
 
-          <section id="indexing-slicing" className="rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+          <section
+            id="indexing-slicing"
+            className="rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+          >
             <h2 className="text-xl font-semibold text-gray-900">
               Try indexing and slicing
             </h2>
@@ -330,7 +346,10 @@ export default function StartFromScratchPage() {
           </section>
         </div>
 
-        <section id="live-visual" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+        <section
+          id="live-visual"
+          className="mt-6 rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+        >
           <h2 className="text-xl font-semibold text-gray-900">Live visual</h2>
           <p className="mt-2 text-sm text-gray-800">
             The highlighted box is the selected index. Blue boxes show the
@@ -342,10 +361,10 @@ export default function StartFromScratchPage() {
                 const inSlice = idx >= sliceStart && idx < sliceEnd;
                 const isSelected = idx === selectedIndex;
                 const boxClass = isSelected
-                  ? "border-2 border-amber-500 bg-amber-100"
+                  ? "border-2 border-pink-400 bg-pink-100"
                   : inSlice
-                    ? "border-2 border-blue-500 bg-blue-100"
-                    : "border border-gray-300 bg-white";
+                    ? "border-2 border-sky-300 bg-sky-100"
+                    : "border border-slate-200 bg-white/60";
                 return (
                   <div key={idx} className="text-center min-w-16">
                     <div className="text-xs text-gray-700">idx {idx}</div>
@@ -365,7 +384,10 @@ export default function StartFromScratchPage() {
           </p>
         </section>
 
-        <section id="two-d-playground" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+        <section
+          id="two-d-playground"
+          className="mt-6 rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+        >
           <h2 className="text-xl font-semibold text-gray-900">
             2D indexing playground
           </h2>
@@ -421,8 +443,8 @@ export default function StartFromScratchPage() {
                         <div
                           className={`mt-1 min-w-14 rounded-md px-3 py-2 border ${
                             isSelected
-                              ? "border-2 border-amber-500 bg-amber-100"
-                              : "border-gray-300 bg-white"
+                              ? "border-2 border-pink-400 bg-pink-100"
+                              : "border-slate-200 bg-white/60"
                           }`}
                         >
                           <span className="font-mono text-gray-900">{value}</span>
@@ -436,7 +458,10 @@ export default function StartFromScratchPage() {
           </div>
         </section>
 
-        <section id="reference" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+        <section
+          id="reference"
+          className="mt-6 rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+        >
           <h2 className="text-xl font-semibold text-gray-900">
             NumPy absolute basics (reference)
           </h2>
@@ -447,14 +472,17 @@ export default function StartFromScratchPage() {
 
           <div className="mt-5 space-y-5">
             {referenceSections.map((section) => (
-              <div key={section.id} className="rounded-md border border-gray-200 bg-gray-50 p-4">
+              <div
+                key={section.id}
+                className="rounded-2xl border border-slate-200/80 bg-white/40 backdrop-blur p-4"
+              >
                 <h3 className="font-semibold text-gray-900">{section.title}</h3>
                 <p className="mt-2 text-sm text-gray-800">{section.description}</p>
                 <div className="mt-2 rounded-md border border-gray-300 overflow-x-auto text-sm">
                   <PythonCodeBlock code={section.code} />
                 </div>
 
-                <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
+                <div className="mt-3 rounded-md border border-pink-200 bg-pink-50 p-3">
                   <p className="text-sm text-gray-900">{section.prompt}</p>
                   <p className="mt-1 text-xs text-gray-800">{practiceGuidance}</p>
                   <PythonCodeEditor
@@ -470,7 +498,7 @@ export default function StartFromScratchPage() {
                   <div className="mt-2 flex items-center gap-3">
                     <button
                       onClick={() => checkSectionAnswer(section)}
-                      className="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                      className="px-3 py-1.5 rounded bg-pink-500 text-white hover:bg-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
                     >
                       Check
                     </button>
@@ -492,7 +520,7 @@ export default function StartFromScratchPage() {
                       onClick={() =>
                         setRevealedSolutions((prev) => ({ ...prev, [section.id]: true }))
                       }
-                      className="mt-2 text-xs text-blue-700 hover:underline"
+                      className="mt-2 text-xs text-pink-700 hover:underline"
                     >
                       Reveal example solution
                     </button>
@@ -507,7 +535,10 @@ export default function StartFromScratchPage() {
           </div>
         </section>
 
-        <section id="custom-array" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+        <section
+          id="custom-array"
+          className="mt-6 rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+        >
           <h2 className="text-xl font-semibold text-gray-900">
             Create your own array visual
           </h2>
@@ -537,7 +568,7 @@ export default function StartFromScratchPage() {
                   {customArray.map((value, idx) => (
                     <div key={idx} className="text-center min-w-16">
                       <div className="text-xs text-gray-500">idx {idx}</div>
-                      <div className="mt-1 rounded-md px-3 py-2 border border-gray-300 bg-white">
+                      <div className="mt-1 rounded-md px-3 py-2 border border-slate-200 bg-white/60">
                         <span className="font-mono text-gray-900">{value}</span>
                       </div>
                     </div>
@@ -552,7 +583,7 @@ export default function StartFromScratchPage() {
           )}
         </section>
 
-        <section className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <section className="mt-6 rounded-lg border border-pink-200 bg-pink-50 p-6">
           <h2 className="text-xl font-semibold text-gray-900">
             Common mistakes / misconceptions
           </h2>
@@ -583,17 +614,20 @@ export default function StartFromScratchPage() {
           </ul>
         </section>
 
-        <section id="quiz-next" className="mt-6 rounded-lg bg-white shadow-md p-6 scroll-mt-20">
+        <section
+          id="quiz-next"
+          className="mt-6 rounded-2xl bg-white/60 backdrop-blur shadow-sm ring-1 ring-slate-200 p-6 scroll-mt-20"
+        >
           <h2 className="text-xl font-semibold text-gray-900">Ready for practice?</h2>
           <p className="mt-2 text-gray-800">
             After exploring the basics, move to a short quiz to check your understanding.
           </p>
-          <a
+          <Link
             href="/start-from-scratch/quiz"
-            className="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="inline-block mt-4 px-4 py-2 bg-pink-500 text-white rounded-xl hover:bg-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
           >
             Start basics quiz
-          </a>
+          </Link>
         </section>
       </div>
     </main>
