@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 type LevelQuestion = {
   prompt: string;
@@ -59,23 +60,28 @@ export default function FindMyLevelPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
-      <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
-        <a href="/" className="text-sm text-blue-600 hover:underline">
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <div className="max-w-2xl w-full bg-white/80 backdrop-blur rounded-2xl shadow-lg ring-1 ring-slate-200 p-8">
+        <Link
+          href="/"
+          className="text-sm text-pink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 rounded"
+        >
           Back to path selection
-        </a>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900">Find my level</h1>
-        <p className="mt-2 text-gray-600">
+        </Link>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+          Find my level
+        </h1>
+        <p className="mt-2 text-slate-600">
           Quick NumPy diagnostic across topics and difficulty.
         </p>
 
         {!isComplete ? (
           <div className="mt-6">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-slate-500">
               Question {currentIndex + 1} of {surveyQuestions.length} - Topic:{" "}
               {question.topic} ({question.difficulty})
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-gray-900">
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">
               {question.prompt}
             </h2>
 
@@ -83,7 +89,7 @@ export default function FindMyLevelPage() {
               {question.choices.map((choice, choiceIndex) => (
                 <button
                   key={choice}
-                  className="text-left p-4 border-2 rounded-md border-gray-300 hover:bg-gray-100 text-gray-900 transition"
+                  className="text-left p-4 border border-slate-200 rounded-xl bg-white/60 hover:bg-white hover:border-slate-300 text-slate-900 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
                   onClick={() => {
                     // Record answer then advance linearly to next prompt.
                     setAnswers((prev) => [...prev, choiceIndex]);
@@ -96,16 +102,18 @@ export default function FindMyLevelPage() {
             </div>
           </div>
         ) : (
-          <div className="mt-6 rounded-md border border-blue-200 bg-blue-50 p-5">
-            <h2 className="text-xl font-semibold text-gray-900">Assessment complete</h2>
-            <p className="mt-2 text-gray-800">
+          <div className="mt-6 rounded-2xl border border-pink-200/70 bg-pink-50/70 p-5">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Assessment complete
+            </h2>
+            <p className="mt-2 text-slate-800">
               You got {score} out of {surveyQuestions.length} correct.
             </p>
-            <p className="mt-1 text-gray-800">
+            <p className="mt-1 text-slate-800">
               Recommended starting level: <strong>{getRecommendedLevel()}</strong>
             </p>
             <button
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="mt-4 px-4 py-2 bg-pink-500 text-white rounded-xl hover:bg-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
               onClick={() => {
                 // Reset full diagnostic session state for retakes.
                 setAnswers([]);
