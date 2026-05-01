@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type Difficulty = "easy" | "medium";
+type Difficulty = "easy" | "medium" | "hard";
 
 // High-level content rails used to keep generated questions within beginner NumPy scope.
 const TOPIC_HINTS = [
@@ -18,7 +18,7 @@ const TOPIC_HINTS = [
 type RequestBody = {
   previousTopic?: string;
   focusTopic?: string;
-  preferEasy?: boolean;
+  difficulty?: Difficulty; // easy, medium, or hard
 };
 
 export async function POST(req: Request) {
@@ -33,8 +33,7 @@ export async function POST(req: Request) {
 
   // Input from frontend controls question difficulty and optional topic de-duplication hints.
   const body = (await req.json()) as RequestBody;
-  const preferEasy = Boolean(body.preferEasy);
-  const targetDifficulty: Difficulty = preferEasy ? "easy" : "medium";
+  const targetDifficulty: Difficulty = body.difficulty ?? "medium"; // medium is fallback
 
   // We explicitly force a strict JSON schema in prompt form because this route is consumed
   // programmatically by the quiz UI and needs predictable fields.
@@ -48,7 +47,7 @@ Use these topics: ${TOPIC_HINTS.join("; ")}.
 Return ONLY JSON with this exact schema:
 {
   "topic": "string",
-  "difficulty": "easy" or "medium",
+  "difficulty": "easy" or "medium" or "hard",
   "prompt": "string",
   "choices": ["string","string","string","string"],
   "correctIndex": 0-3,
@@ -122,7 +121,7 @@ No markdown, no code fences.
     // Runtime schema guard: reject malformed model output before it reaches client UI.
     if (
       typeof parsed.topic !== "string" ||
-      (parsed.difficulty !== "easy" && parsed.difficulty !== "medium") ||
+      (parsed.difficulty !== "easy" && parsed.difficulty !== "medium" && parsed.difficulty !== "hard") ||
       typeof parsed.prompt !== "string" ||
       !Array.isArray(parsed.choices) ||
       parsed.choices.length !== 4 ||
