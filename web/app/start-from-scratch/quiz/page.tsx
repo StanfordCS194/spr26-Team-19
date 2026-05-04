@@ -85,8 +85,10 @@ type GeneratedQuestionResponse = {
   hint?: string;
 };
 
+type Difficulty = "easy" | "medium" | "hard";
+
 type mcqGenerationRequest = {
-  preferEasy: boolean;
+  difficulty: Difficulty;
   previousTopic?: string;
   focusTopic?: string;
 };
@@ -199,9 +201,19 @@ export default function BasicsQuizPage() {
     const projectedScore = mcqScore + (answerWasCorrect ? 1 : 0);
     const projectedAccuracy = attemptedCount === 0 ? 1 : projectedScore / attemptedCount;
 
+
+    let difficulty: Difficulty; // declaration w/ no initial value
+
+    // Stay easy early or when accuracy drops; otherwise allow medium questions.
+    if (attemptedCount < 2 || projectedAccuracy < 0.7) {
+    difficulty = "easy";
+    } else {
+    difficulty = "medium";
+    }
+
     return {
       // Stay easy early or when accuracy drops; otherwise allow medium questions.
-      preferEasy: attemptedCount < 2 || projectedAccuracy < 0.7,
+      difficulty,
       previousTopic: question.topic,
       focusTopic: weakTopic,
     };
