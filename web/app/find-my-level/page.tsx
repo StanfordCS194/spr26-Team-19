@@ -441,9 +441,11 @@ export default function BasicsQuizPage() {
         {phase === "complete" && (
           <div className="mt-6">
             <h2 className="text-xl font-semibold text-gray-900">Quiz complete</h2>
+            <p className="mt-2 text-gray-800">Your recommended level: <strong>{computeFinalLevel(history)}</strong></p>
             <p className="mt-2 text-gray-800">
               MCQ score: {mcqScore} / {TOTAL_MCQ}
             </p>
+
             {weakTopics.length > 0 ? (
               <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
                 <p className="font-semibold text-gray-900">Topics to review</p>
