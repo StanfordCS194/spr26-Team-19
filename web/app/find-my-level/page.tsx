@@ -1,126 +1,439 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
-type LevelQuestion = {
+// Generic shape for each multiple-choice question used in the MCQ stage.
+type PlacementQuestion = {
   prompt: string;
-  topic: string;
-  difficulty: "easy" | "medium" | "hard";
+  topic: string; 
   choices: string[];
   correctIndex: number;
+  explanation: string;
+  hint: string; 
 };
 
-// Starter diagnostic set. This can later be replaced or expanded by DB/LLM-generated content.
-const surveyQuestions: LevelQuestion[] = [
+// MCQ stage is capped intentionally to keep quiz duration predictable.
+const TOTAL_MCQ = 8;
+
+// Local fallback bank used when LLM generation fails/rate-limits/duplicates.
+const fallbackMcqBank: PlacementQuestion[] = [
   {
-    prompt: "What does `np.array([[1, 2], [3, 4]]).shape` return?",
-    topic: "array shape",
-    difficulty: "easy",
-    choices: ["(2, 2)", "(4,)", "(1, 4)", "2"],
-    correctIndex: 0,
-  },
-  {
-    prompt: "Which slicing expression selects the first column of a 2D array `a`?",
+    prompt: "What does indexing return in `arr[2]`?",
     topic: "indexing",
-    difficulty: "medium",
-    choices: ["a[0, :]", "a[:, 0]", "a[0:0]", "a[:, :]"],
-    correctIndex: 1,
+    choices: [
+      "A single element at position 2",
+      "All elements from 0 to 2",
+      "A tuple with shape information",
+      "A sorted copy of the array",
+    ],
+    correctIndex: 0,
+    explanation: "Indexing with one integer returns one element at that position.",
+    hint: "Focus on what a single integer index does: it selects one position, not a range.",
   },
   {
-    prompt:
-      "For arrays `a.shape == (3, 1)` and `b.shape == (1, 4)`, what is `(a + b).shape`?",
-    topic: "broadcasting",
-    difficulty: "hard",
-    choices: ["(3, 1)", "(1, 4)", "(3, 4)", "Broadcasting fails"],
+    prompt: "Given arr = [5, 10, 15, 20], what does `arr[1:3]` return?",
+    topic: "slicing",
+    choices: ["[5, 10]", "[10, 15]", "[10, 15, 20]", "[15, 20]"],
+    correctIndex: 1,
+    explanation: "Slices include start and exclude end, so indices 1 and 2.",
+    hint: "Remember that slicing includes the start index but excludes the end index.",
+  },
+  {
+    prompt: "For a 1D array with 6 elements, what is `arr.shape`?",
+    topic: "array shape",
+    choices: ["(6)", "(6,)", "(1, 6)", "6"],
+    correctIndex: 1,
+    explanation: "A 1D NumPy array shape is represented as `(n,)`.",
+    hint: "A 1D NumPy shape is written as a tuple even if it has only one dimension.",
+  },
+  {
+    prompt: "Which expression returns the last two elements of `arr`?",
+    topic: "slicing",
+    choices: ["arr[:2]", "arr[2:]", "arr[-2:]", "arr[-1]"],
     correctIndex: 2,
+    explanation: "Negative slicing with `-2:` selects the last two elements.",
+    hint: "Negative indices count backward from the end of the array.",
+  },
+  {
+    prompt: "Which function returns a sorted copy of an array `a`?",
+    topic: "numpy functions",
+    choices: ["a.sortcopy()", "np.sort(a)", "np.order(a)", "a.sorted()"],
+    correctIndex: 1,
+    explanation: "`np.sort(a)` returns a sorted copy.",
+    hint: "Think about the standard NumPy function for sorting without modifying the original array in place.",
   },
 ];
 
-export default function FindMyLevelPage() {
-  // currentIndex points to active diagnostic prompt.
-  const [currentIndex, setCurrentIndex] = useState(0);
-  // answers stores the choice index selected per question in order.
-  const [answers, setAnswers] = useState<number[]>([]);
-  const question = surveyQuestions[currentIndex];
-  const isComplete = currentIndex >= surveyQuestions.length;
+// Expected response shape from /api/generate-question endpoint.
+type GeneratedQuestionResponse = {
+  topic: string;
+  prompt: string;
+  choices: string[];
+  correctIndex: number;
+  explanation: string;
+  hint?: string;
+};
 
-  // Score is derived from answer history and reference correct indexes.
-  const score = useMemo(() => {
-    return answers.reduce((total, answer, i) => {
-      return total + (answer === surveyQuestions[i].correctIndex ? 1 : 0);
-    }, 0);
-  }, [answers]);
+type Difficulty = "easy" | "medium" | "hard";
 
-  function getRecommendedLevel() {
-    // Lightweight rubric: intended as a placeholder until adaptive model routing is added.
-    if (score <= 1) return "Beginner";
-    if (score === 2) return "Intermediate";
-    return "Advanced";
+type placementGenerationRequest = {
+  difficulty: Difficulty;
+  previousTopic?: string;
+  focusTopic?: string;
+};
+
+
+
+
+export default function BasicsQuizPage() {
+  // Top-level finite state machine for assessment progression.
+  const [phase, setPhase] = useState<"mcq" | "code" | "complete">("mcq");
+  // 2-slot + buffer pipeline:
+  // - currentQuestion: visible now
+  // - prefetchedQuestion: next question ready immediately
+  // - bufferedQuestion: newly generated in background after answer selection
+  const [currentQuestion, setCurrentQuestion] = useState<PlacementQuestion>(fallbackMcqBank[0]!);
+  const [prefetchedQuestion, setPrefetchedQuestion] = useState<PlacementQuestion>(
+    fallbackMcqBank[1] ?? fallbackMcqBank[0]!,
+  );
+  const [bufferedQuestion, setBufferedQuestion] = useState<PlacementQuestion | null>(null);
+  // Track prompts to reduce duplicates from model generation.
+  const [seenPrompts, setSeenPrompts] = useState<string[]>([
+    fallbackMcqBank[0]!.prompt,
+    (fallbackMcqBank[1] ?? fallbackMcqBank[0]!).prompt,
+  ]);
+  // Status for generation source visibility in UI.
+  const [isPrefetchingMcq, setIsPrefetchingMcq] = useState(false);
+  const [mcqGenerationStatus, setMcqGenerationStatus] = useState<
+    "idle" | "generated" | "fallback"
+  >("idle");
+  // MCQ stage state.
+  const [index, setIndex] = useState(0);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [mcqScore, setMcqScore] = useState(0);
+
+
+
+  const question = currentQuestion; // Alias for readability in JSX.
+  const hasAnswered = selected !== null;
+  const isCorrect = selected === question.correctIndex;
+  const isLastQuestion = index === TOTAL_MCQ - 1;
+  
+  function getWeakTopics() {
+    return Object.entries(topicMistakes)
+      .sort((a, b) => b[1] - a[1])
+      .map(([topic]) => topic);
+  }
+  
+  function getRecommendedTopic() {
+    const weakTopics = getWeakTopics();
+    return weakTopics.length > 0 ? weakTopics[0] : null;
+  }
+  //Hint State 
+  const [showHint, setShowHint] = useState(false); 
+  //Mistake tracker 
+  const [topicMistakes, setTopicMistakes] = useState<Record<string, number>>({});
+
+  function buildAdaptiveGenerationRequest(answerWasCorrect?: boolean): placementGenerationRequest {
+    const projectedMistakes = { ...topicMistakes };
+    
+    if (answerWasCorrect === false) {
+      projectedMistakes[question.topic] = (projectedMistakes[question.topic] ?? 0) + 1;
+    }
+    const weakTopic = Object.entries(projectedMistakes).sort((a, b) => b[1] - a[1])[0]?.[0];
+    
+    const attemptedCount = index + (answerWasCorrect === undefined ? 0 : 1);
+    const projectedScore = mcqScore + (answerWasCorrect ? 1 : 0);
+    const projectedAccuracy = attemptedCount === 0 ? 1 : projectedScore / attemptedCount;
+
+
+    let difficulty: Difficulty; // declaration w/ no initial value
+
+    // Stay easy early or when accuracy drops; otherwise allow medium questions.
+    if (attemptedCount < 2 || projectedAccuracy < 0.7) {
+    difficulty = "easy";
+    } else {
+    difficulty = "medium";
+    }
+
+    return {
+      // Stay easy early or when accuracy drops; otherwise allow medium questions.
+      difficulty,
+      previousTopic: question.topic,
+      focusTopic: weakTopic,
+    };
   }
 
-  return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="max-w-2xl w-full bg-white/80 backdrop-blur rounded-2xl shadow-lg ring-1 ring-slate-200 p-8">
-        <Link
-          href="/"
-          className="text-sm text-pink-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 rounded"
-        >
-          Back to path selection
-        </Link>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-          Find my level
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Quick NumPy diagnostic across topics and difficulty.
-        </p>
+  
 
-        {!isComplete ? (
-          <div className="mt-6">
-            <p className="text-sm text-slate-500">
-              Question {currentIndex + 1} of {surveyQuestions.length} - Topic:{" "}
-              {question.topic} ({question.difficulty})
+
+  function getFallbackQuestion(existingPrompts: Set<string>): PlacementQuestion {
+    // Prefer unseen fallback prompts first, otherwise allow reuse.
+    const candidate = fallbackMcqBank.find((item) => !existingPrompts.has(item.prompt));
+    return candidate ?? fallbackMcqBank[Math.floor(Math.random() * fallbackMcqBank.length)]!;
+  }
+
+  async function fetchGeneratedMcq(
+    existingPrompts: Set<string>,
+    generationRequest: placementGenerationRequest,
+  ): Promise<{ question: PlacementQuestion; source: "generated" | "fallback" }> {
+    try {
+      // MCQ generation is delegated to server endpoint (which calls provider model).
+      const response = await fetch("/api/generate-question", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(generationRequest),
+      });
+      if (!response.ok) throw new Error("MCQ generation request failed");
+      const payload = (await response.json()) as GeneratedQuestionResponse;
+      if (
+        !payload ||
+        typeof payload.topic !== "string" ||
+        typeof payload.prompt !== "string" ||
+        !Array.isArray(payload.choices) ||
+        payload.choices.length !== 4 ||
+        typeof payload.correctIndex !== "number" ||
+        payload.correctIndex < 0 ||
+        payload.correctIndex > 3 ||
+        typeof payload.explanation !== "string"
+      ) {
+        throw new Error("Invalid MCQ payload");
+      }
+      const generated: PlacementQuestion = {
+        topic: payload.topic,
+        prompt: payload.prompt,
+        choices: payload.choices.map(String),
+        correctIndex: payload.correctIndex,
+        explanation: payload.explanation,
+        hint: payload.hint?.trim() || "Consider the NumPy rule being tested here.",
+      };
+      // If duplicate prompt appears, fall back to local question for variety.
+      if (existingPrompts.has(generated.prompt)) {
+        return { question: getFallbackQuestion(existingPrompts), source: "fallback" };
+      }
+      return { question: generated, source: "generated" };
+    } catch {
+      // Any provider/network/schema failure gracefully downgrades to fallback.
+      return { question: getFallbackQuestion(existingPrompts), source: "fallback" };
+    }
+  }
+
+  async function prefetchBufferedMcq(answerWasCorrect? : boolean) {
+    // Only prefetch during MCQ stage and only when not on terminal MCQ.
+    if (phase !== "mcq" || isLastQuestion || isPrefetchingMcq) return;
+    setIsPrefetchingMcq(true);
+    const existingPrompts = new Set(seenPrompts);
+    const result = await fetchGeneratedMcq(
+      existingPrompts,
+      buildAdaptiveGenerationRequest(answerWasCorrect),
+    );
+    const nextQuestion = result.question;
+    setBufferedQuestion(nextQuestion);
+    setMcqGenerationStatus(result.source);
+    setSeenPrompts((prev) =>
+      prev.includes(nextQuestion.prompt) ? prev : [...prev, nextQuestion.prompt],
+    );
+    setIsPrefetchingMcq(false);
+  }
+
+  function handleSelect(choiceIndex: number) {
+    // Lock answer after first selection to avoid double-scoring.
+    if (hasAnswered) return;
+    setSelected(choiceIndex);
+    const answerWasCorrect = choiceIndex === question.correctIndex;
+
+    if (answerWasCorrect) {
+      setMcqScore((prev) => prev + 1);
+    } else { //Track for mistakes
+      setTopicMistakes((prev) => ({
+        ...prev,
+        [question.topic]: (prev[question.topic] || 0) + 1,
+      }));
+    }
+    // Trigger background generation on answer selection (not on Next).
+    void prefetchBufferedMcq(answerWasCorrect);
+  }
+
+  function handleNext() {
+    if (isLastQuestion) return;
+    setSelected(null);
+    const existingPrompts = new Set(seenPrompts);
+    // Promote prefetched -> current immediately for snappy UX.
+    const nextCurrent = prefetchedQuestion ?? getFallbackQuestion(existingPrompts);
+    // Promote buffered -> prefetched for next hop in the pipeline.
+    const nextPrefetched =
+      bufferedQuestion ?? getFallbackQuestion(new Set([...existingPrompts, nextCurrent.prompt]));
+    setCurrentQuestion(nextCurrent);
+    setPrefetchedQuestion(nextPrefetched);
+    setSeenPrompts((prev) => {
+      const next = [...prev];
+      if (!next.includes(nextCurrent.prompt)) next.push(nextCurrent.prompt);
+      if (!next.includes(nextPrefetched.prompt)) next.push(nextPrefetched.prompt);
+      return next;
+    });
+    setBufferedQuestion(null);
+    setMcqGenerationStatus("idle");
+    setIndex((prev) => prev + 1);
+    setShowHint(false);
+  }
+
+
+
+
+
+  function handleRestart() {
+    // Full session reset across both MCQ and coding phases.
+    setPhase("mcq");
+    setCurrentQuestion(fallbackMcqBank[0]!);
+    setPrefetchedQuestion(fallbackMcqBank[1] ?? fallbackMcqBank[0]!);
+    setBufferedQuestion(null);
+    setSeenPrompts([fallbackMcqBank[0]!.prompt, (fallbackMcqBank[1] ?? fallbackMcqBank[0]!).prompt]);
+    setIsPrefetchingMcq(false);
+    setMcqGenerationStatus("idle");
+    setIndex(0);
+    setSelected(null);
+    setMcqScore(0);
+    setShowHint(false);
+    setTopicMistakes({});
+  }
+  const recommendedTopic = getRecommendedTopic();
+  const weakTopics = getWeakTopics();
+
+
+
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
+      <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
+        <a href="/start-from-scratch" className="text-sm text-blue-600 hover:underline">
+          Back to basics page
+        </a>
+        <h1 className="mt-2 text-2xl font-bold text-gray-900">Basics quiz</h1>
+        {phase === "mcq" && (
+          <>
+            <p className="mt-2 text-gray-700">
+              MCQ {index + 1} of {TOTAL_MCQ}
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">
-              {question.prompt}
-            </h2>
+            <p className="mt-1 text-sm text-gray-700">
+              {isPrefetchingMcq
+                ? "Generating next question in background..."
+                : mcqGenerationStatus === "generated"
+                  ? "Next question source: LLM generated"
+                  : mcqGenerationStatus === "fallback"
+                    ? "Next question source: fallback question"
+                    : "Next question source: waiting for answer"}
+            </p>
+
+            <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
+
+            <div className="mt-4">
+              {!showHint ? (
+                <button
+                  className="px-4 py-2 border border-blue-600 text-blue-600 rounded hover:bg-blue-50"
+                  onClick={() => setShowHint(true)}
+                  disabled={hasAnswered}
+                >
+                  Show hint
+              </button>
+              )   : (
+                <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3">
+                  <p className="text-sm font-medium text-yellow-800">Hint</p>
+                  <p className="mt-1 text-sm text-gray-800">
+                    {question.hint}
+                  </p>
+                </div>
+              )}
+          </div>
 
             <div className="mt-4 flex flex-col gap-3">
-              {question.choices.map((choice, choiceIndex) => (
-                <button
-                  key={choice}
-                  className="text-left p-4 border border-slate-200 rounded-xl bg-white/60 hover:bg-white hover:border-slate-300 text-slate-900 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
-                  onClick={() => {
-                    // Record answer then advance linearly to next prompt.
-                    setAnswers((prev) => [...prev, choiceIndex]);
-                    setCurrentIndex((prev) => prev + 1);
-                  }}
-                >
-                  {choice}
-                </button>
-              ))}
+              {question.choices.map((choice, choiceIndex) => {
+                let style = "border-gray-300 hover:bg-gray-100 text-gray-900";
+                if (hasAnswered) {
+                  if (choiceIndex === question.correctIndex) {
+                    style = "border-green-500 bg-green-100 text-gray-900";
+                  } else if (choiceIndex === selected) {
+                    style = "border-red-500 bg-red-100 text-gray-900";
+                  } else {
+                    style = "border-gray-200 text-gray-500";
+                  }
+                }
+
+                return (
+                  <button
+                    key={choice}
+                    className={`text-left p-4 border-2 rounded-md transition ${style}`}
+                    onClick={() => handleSelect(choiceIndex)}
+                    disabled={hasAnswered}
+                  >
+                    {choice}
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        ) : (
-          <div className="mt-6 rounded-2xl border border-pink-200/70 bg-pink-50/70 p-5">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Assessment complete
-            </h2>
-            <p className="mt-2 text-slate-800">
-              You got {score} out of {surveyQuestions.length} correct.
+
+            {hasAnswered && (
+              <div className="mt-5">
+                <p className={`font-semibold ${isCorrect ? "text-green-600" : "text-red-600"}`}>
+                  {isCorrect ? "Correct!" : "Not quite."}
+                </p>
+                <p className="mt-1 text-sm text-gray-700">{question.explanation}</p>
+                {!isLastQuestion ? (
+                  <button
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    onClick={handleNext}
+                  >
+                    Next question
+                  </button>
+                ) : (
+                  <div className="mt-4">
+                    <p className="text-gray-800">
+                      MCQ score: {mcqScore} / {TOTAL_MCQ}
+                    </p>
+                    <button
+                      className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      onClick={() => setPhase("complete")}
+                    >
+                      See My Results
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+
+        {phase === "complete" && (
+          <div className="mt-6">
+            <h2 className="text-xl font-semibold text-gray-900">Quiz complete</h2>
+            <p className="mt-2 text-gray-800">
+              MCQ score: {mcqScore} / {TOTAL_MCQ}
             </p>
-            <p className="mt-1 text-slate-800">
-              Recommended starting level: <strong>{getRecommendedLevel()}</strong>
-            </p>
+            {weakTopics.length > 0 ? (
+              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
+                <p className="font-semibold text-gray-900">Topics to review</p>
+                <ul className="mt-2 list-disc list-inside text-gray-800">
+                  {weakTopics.map((topic) => (
+                    <li key={topic}>{topic}</li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-gray-900">
+                  Recommended next topic: <strong>{recommendedTopic}</strong>
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-4">
+                <p className="font-semibold text-gray-900">Great job!</p>
+                <p className="mt-1 text-gray-800">
+                  You did not show a clear weak area in this quiz.
+                </p>
+              </div>
+            )}
+
             <button
-              className="mt-4 px-4 py-2 bg-pink-500 text-white rounded-xl hover:bg-pink-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2"
-              onClick={() => {
-                // Reset full diagnostic session state for retakes.
-                setAnswers([]);
-                setCurrentIndex(0);
-              }}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={handleRestart}
             >
-              Retake survey
+              Retake full quiz
             </button>
           </div>
         )}
