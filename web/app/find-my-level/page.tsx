@@ -6,20 +6,26 @@ import { useEffect, useMemo, useState } from "react";
 type PlacementQuestion = {
   prompt: string;
   topic: string; 
+  difficulty: Difficulty;
   choices: string[];
   correctIndex: number;
   explanation: string;
   hint: string; 
 };
+type AnsweredQuestion = PlacementQuestion & { //Added to track user answer for adaptive logic
+  chosenIndex: number;
+  isCorrect: boolean;
+};
 
 // MCQ stage is capped intentionally to keep quiz duration predictable.
-const TOTAL_MCQ = 8;
+const TOTAL_MCQ = 10;
 
 // Local fallback bank used when LLM generation fails/rate-limits/duplicates.
 const fallbackMcqBank: PlacementQuestion[] = [
   {
     prompt: "What does indexing return in `arr[2]`?",
     topic: "indexing",
+    difficulty: "easy",
     choices: [
       "A single element at position 2",
       "All elements from 0 to 2",
@@ -33,6 +39,7 @@ const fallbackMcqBank: PlacementQuestion[] = [
   {
     prompt: "Given arr = [5, 10, 15, 20], what does `arr[1:3]` return?",
     topic: "slicing",
+    difficulty: "easy",
     choices: ["[5, 10]", "[10, 15]", "[10, 15, 20]", "[15, 20]"],
     correctIndex: 1,
     explanation: "Slices include start and exclude end, so indices 1 and 2.",
@@ -41,6 +48,7 @@ const fallbackMcqBank: PlacementQuestion[] = [
   {
     prompt: "For a 1D array with 6 elements, what is `arr.shape`?",
     topic: "array shape",
+    difficulty: "medium",
     choices: ["(6)", "(6,)", "(1, 6)", "6"],
     correctIndex: 1,
     explanation: "A 1D NumPy array shape is represented as `(n,)`.",
@@ -49,6 +57,7 @@ const fallbackMcqBank: PlacementQuestion[] = [
   {
     prompt: "Which expression returns the last two elements of `arr`?",
     topic: "slicing",
+    difficulty: "medium",
     choices: ["arr[:2]", "arr[2:]", "arr[-2:]", "arr[-1]"],
     correctIndex: 2,
     explanation: "Negative slicing with `-2:` selects the last two elements.",
@@ -57,6 +66,7 @@ const fallbackMcqBank: PlacementQuestion[] = [
   {
     prompt: "Which function returns a sorted copy of an array `a`?",
     topic: "numpy functions",
+    difficulty: "medium",
     choices: ["a.sortcopy()", "np.sort(a)", "np.order(a)", "a.sorted()"],
     correctIndex: 1,
     explanation: "`np.sort(a)` returns a sorted copy.",
@@ -67,6 +77,7 @@ const fallbackMcqBank: PlacementQuestion[] = [
 // Expected response shape from /api/generate-question endpoint.
 type GeneratedQuestionResponse = {
   topic: string;
+  difficulty: Difficulty;
   prompt: string;
   choices: string[];
   correctIndex: number;
@@ -81,7 +92,21 @@ type placementGenerationRequest = {
   previousTopic?: string;
   focusTopic?: string;
 };
-
+function computeFinalLevel(history: AnsweredQuestion[]): string{
+  if (history.length === 0) return "Beginner";
+  const overallAccuracy = history.filter((a) => a.isCorrect).length / history.length;
+  const hardAttempts = history.filter((a) => a.difficulty === "hard");
+  const hardAccuracy = hardAttempts.length > 0 ? hardAttempts.filter((a) => a.isCorrect).length / hardAttempts.length : 0;
+  const hardCorrect = hardAttempts.filter((a) => a.isCorrect).length;
+  
+  if (overallAccuracy >= 0.7 && hardAccuracy >= 0.8 && hardCorrect >= 2) {
+    return "Advanced";
+  } else if (overallAccuracy >= 0.7 && hardAccuracy >= 0.5 && hardCorrect >= 1) {
+    return "Intermediate";
+  } else {
+    return "Beginner";
+  }
+}
 
 
 
@@ -111,7 +136,7 @@ export default function BasicsQuizPage() {
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [mcqScore, setMcqScore] = useState(0);
-
+  const [history, setHistory] = useState<AnsweredQuestion[]>([]); // Added to track user answers for adaptive logic
 
 
   const question = currentQuestion; // Alias for readability in JSX.
@@ -189,6 +214,9 @@ export default function BasicsQuizPage() {
       if (
         !payload ||
         typeof payload.topic !== "string" ||
+        (payload.difficulty !== "easy" &&
+          payload.difficulty !== "medium" &&
+          payload.difficulty !== "hard") ||
         typeof payload.prompt !== "string" ||
         !Array.isArray(payload.choices) ||
         payload.choices.length !== 4 ||
@@ -201,12 +229,16 @@ export default function BasicsQuizPage() {
       }
       const generated: PlacementQuestion = {
         topic: payload.topic,
+        difficulty: payload.difficulty, 
         prompt: payload.prompt,
         choices: payload.choices.map(String),
         correctIndex: payload.correctIndex,
         explanation: payload.explanation,
         hint: payload.hint?.trim() || "Consider the NumPy rule being tested here.",
       };
+
+
+
       // If duplicate prompt appears, fall back to local question for variety.
       if (existingPrompts.has(generated.prompt)) {
         return { question: getFallbackQuestion(existingPrompts), source: "fallback" };
@@ -241,7 +273,10 @@ export default function BasicsQuizPage() {
     if (hasAnswered) return;
     setSelected(choiceIndex);
     const answerWasCorrect = choiceIndex === question.correctIndex;
-
+    setHistory((prev) => [
+      ...prev,
+      { ...question, chosenIndex: choiceIndex, isCorrect: answerWasCorrect },
+    ]);
     if (answerWasCorrect) {
       setMcqScore((prev) => prev + 1);
     } else { //Track for mistakes
@@ -295,6 +330,7 @@ export default function BasicsQuizPage() {
     setMcqScore(0);
     setShowHint(false);
     setTopicMistakes({});
+    setHistory([]);
   }
   const recommendedTopic = getRecommendedTopic();
   const weakTopics = getWeakTopics();
