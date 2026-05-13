@@ -113,7 +113,6 @@ function computeFinalLevel(history: AnsweredQuestion[]): string{
 
 
 export default function FindMyLevelPage() {
-  // Client-side navigation to /numpy/path after persisting placement (see goToPlacementHub).
   const router = useRouter();
   // 2-slot + buffer pipeline:
   // - currentQuestion: visible now
@@ -253,7 +252,7 @@ export default function FindMyLevelPage() {
   }
 
   async function prefetchBufferedMcq(answerWasCorrect? : boolean) {
-    // Only prefetch when not on terminal MCQ.
+    // Only prefetch during MCQ stage and only when not on terminal MCQ.
     if (isLastQuestion || isPrefetchingMcq) return;
     setIsPrefetchingMcq(true);
     const existingPrompts = new Set(seenPrompts);
@@ -314,8 +313,25 @@ export default function FindMyLevelPage() {
     setShowHint(false);
   }
 
+
+
+
+
+  function handleRestart() {
+    setCurrentQuestion(fallbackMcqBank[0]!);
+    setPrefetchedQuestion(fallbackMcqBank[1] ?? fallbackMcqBank[0]!);
+    setBufferedQuestion(null);
+    setSeenPrompts([fallbackMcqBank[0]!.prompt, (fallbackMcqBank[1] ?? fallbackMcqBank[0]!).prompt]);
+    setIsPrefetchingMcq(false);
+    setMcqGenerationStatus("idle");
+    setIndex(0);
+    setSelected(null);
+    setMcqScore(0);
+    setShowHint(false);
+    setTopicMistakes({});
+    setHistory([]);
+  }
   function goToPlacementHub() {
-    // Snapshot everything the hub needs; same shape the future profile API could accept.
     const level = computeFinalLevel(history);
     saveNumpyPlacement({
       level,
@@ -325,7 +341,6 @@ export default function FindMyLevelPage() {
       totalMcq: TOTAL_MCQ,
       completedAt: new Date().toISOString(),
     });
-    // Query mirrors level for a shareable URL; sessionStorage still holds weak topics + score.
     router.push(`/numpy/path?level=${encodeURIComponent(level)}`);
   }
 
@@ -335,9 +350,18 @@ export default function FindMyLevelPage() {
         <a href="/" className="text-sm text-blue-600 hover:underline">
           Back to home
         </a>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900">Find my level</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold text-gray-900">Find my level</h1>
+          <button
+            type="button"
+            className="text-sm text-blue-600 underline hover:text-blue-800"
+            onClick={handleRestart}
+          >
+            Start over
+          </button>
+        </div>
         <p className="mt-1 text-sm text-gray-600">
-          Short NumPy placement quiz. When you finish, we will open your personalized path.
+          Finish the quiz, then open your personalized path and exercise zone.
         </p>
             <p className="mt-2 text-gray-700">
               MCQ {index + 1} of {TOTAL_MCQ}
@@ -418,8 +442,8 @@ export default function FindMyLevelPage() {
                       MCQ score: {mcqScore} / {TOTAL_MCQ}
                     </p>
                     <button
-                      className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                       type="button"
+                      className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                       onClick={() => goToPlacementHub()}
                     >
                       See my results and path

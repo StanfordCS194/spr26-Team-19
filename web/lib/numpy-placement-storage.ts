@@ -1,7 +1,3 @@
-/**
- * Placement results passed from Find my level → /numpy/path.
- * Stored in sessionStorage so the hub works without login or a database (TA: swap for API later).
- */
 export type NumpyPlacementPayload = {
   level: string;
   weakTopics: string[];
@@ -11,16 +7,14 @@ export type NumpyPlacementPayload = {
   completedAt: string;
 };
 
-/** Bump `.v1` if you change NumpyPlacementPayload fields so old blobs are ignored. */
 export const NUMPY_PLACEMENT_STORAGE_KEY = "adapted.numpy.placement.v1";
 
 export function saveNumpyPlacement(payload: NumpyPlacementPayload): void {
-  // SSR / pre-render: no window — saves are client-only.
   if (typeof window === "undefined") return;
   try {
     sessionStorage.setItem(NUMPY_PLACEMENT_STORAGE_KEY, JSON.stringify(payload));
   } catch {
-    // Storage quota or private mode — user can still open /numpy/path?level=… from the redirect.
+    /* ignore */
   }
 }
 
@@ -32,7 +26,6 @@ export function loadNumpyPlacement(): NumpyPlacementPayload | null {
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return null;
     const o = parsed as Record<string, unknown>;
-    // Narrow unknown JSON to our type so a tampered or legacy value cannot crash the hub.
     if (
       typeof o.level !== "string" ||
       !Array.isArray(o.weakTopics) ||
@@ -62,6 +55,6 @@ export function clearNumpyPlacement(): void {
   try {
     sessionStorage.removeItem(NUMPY_PLACEMENT_STORAGE_KEY);
   } catch {
-    /* noop */
+    /* ignore */
   }
 }
