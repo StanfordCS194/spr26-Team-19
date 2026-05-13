@@ -412,7 +412,7 @@ export default function FindMyLevelPage() {
 
                 return (
                   <button
-                    key={choice}
+                    key={choiceIndex}
                     className={`text-left p-4 border-2 rounded-md transition ${style}`}
                     onClick={() => handleSelect(choiceIndex)}
                     disabled={hasAnswered}
