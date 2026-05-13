@@ -4,6 +4,9 @@ export type NumpyPlacementPayload = {
   recommendedTopic: string | null;
   mcqScore: number;
   totalMcq: number;
+  /** First-try passes on placement code tasks, if that stage was included. */
+  codeScore?: number;
+  totalCode?: number;
   completedAt: string;
 };
 
@@ -37,12 +40,16 @@ export function loadNumpyPlacement(): NumpyPlacementPayload | null {
     ) {
       return null;
     }
+    const codeScore = o.codeScore;
+    const totalCode = o.totalCode;
     return {
       level: o.level,
       weakTopics: o.weakTopics as string[],
       recommendedTopic: o.recommendedTopic as string | null,
       mcqScore: o.mcqScore,
       totalMcq: o.totalMcq,
+      ...(typeof codeScore === "number" ? { codeScore } : {}),
+      ...(typeof totalCode === "number" ? { totalCode } : {}),
       completedAt: o.completedAt,
     };
   } catch {
