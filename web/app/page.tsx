@@ -67,6 +67,14 @@ export default function Home() {
               </p>
             </Link>
           </div>
+
+          <p className="mt-8 text-center text-sm text-slate-600">
+            After placement, open your{" "}
+            <Link href="/numpy/path" className="font-medium text-sky-700 hover:underline">
+              NumPy learning path
+            </Link>
+            .
+          </p>
         </div>
       </section>
     </main>
