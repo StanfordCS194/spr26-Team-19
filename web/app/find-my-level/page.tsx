@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type PlacementQuestion = {
@@ -110,9 +112,8 @@ function computeFinalLevel(history: AnsweredQuestion[]): string{
 
 
 
-export default function BasicsQuizPage() {
-  // Top-level finite state machine for assessment progression.
-  const [phase, setPhase] = useState<"mcq" | "code" | "complete">("mcq");
+export default function FindMyLevelPage() {
+  const router = useRouter();
   // 2-slot + buffer pipeline:
   // - currentQuestion: visible now
   // - prefetchedQuestion: next question ready immediately
@@ -252,7 +253,7 @@ export default function BasicsQuizPage() {
 
   async function prefetchBufferedMcq(answerWasCorrect? : boolean) {
     // Only prefetch during MCQ stage and only when not on terminal MCQ.
-    if (phase !== "mcq" || isLastQuestion || isPrefetchingMcq) return;
+    if (isLastQuestion || isPrefetchingMcq) return;
     setIsPrefetchingMcq(true);
     const existingPrompts = new Set(seenPrompts);
     const result = await fetchGeneratedMcq(
@@ -317,8 +318,6 @@ export default function BasicsQuizPage() {
 
 
   function handleRestart() {
-    // Full session reset across both MCQ and coding phases.
-    setPhase("mcq");
     setCurrentQuestion(fallbackMcqBank[0]!);
     setPrefetchedQuestion(fallbackMcqBank[1] ?? fallbackMcqBank[0]!);
     setBufferedQuestion(null);
@@ -332,20 +331,38 @@ export default function BasicsQuizPage() {
     setTopicMistakes({});
     setHistory([]);
   }
-  const recommendedTopic = getRecommendedTopic();
-  const weakTopics = getWeakTopics();
-
-
+  function goToPlacementHub() {
+    const level = computeFinalLevel(history);
+    saveNumpyPlacement({
+      level,
+      weakTopics: getWeakTopics(),
+      recommendedTopic: getRecommendedTopic(),
+      mcqScore,
+      totalMcq: TOTAL_MCQ,
+      completedAt: new Date().toISOString(),
+    });
+    router.push(`/numpy/path?level=${encodeURIComponent(level)}`);
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
       <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
-        <a href="/start-from-scratch" className="text-sm text-blue-600 hover:underline">
-          Back to basics page
+        <a href="/" className="text-sm text-blue-600 hover:underline">
+          Back to home
         </a>
-        <h1 className="mt-2 text-2xl font-bold text-gray-900">Basics quiz</h1>
-        {phase === "mcq" && (
-          <>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold text-gray-900">Find my level</h1>
+          <button
+            type="button"
+            className="text-sm text-blue-600 underline hover:text-blue-800"
+            onClick={handleRestart}
+          >
+            Start over
+          </button>
+        </div>
+        <p className="mt-1 text-sm text-gray-600">
+          Finish the quiz, then open your personalized path and exercise zone.
+        </p>
             <p className="mt-2 text-gray-700">
               MCQ {index + 1} of {TOTAL_MCQ}
             </p>
@@ -425,56 +442,16 @@ export default function BasicsQuizPage() {
                       MCQ score: {mcqScore} / {TOTAL_MCQ}
                     </p>
                     <button
+                      type="button"
                       className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      onClick={() => setPhase("complete")}
+                      onClick={() => goToPlacementHub()}
                     >
-                      See My Results
+                      See my results and path
                     </button>
                   </div>
                 )}
               </div>
             )}
-          </>
-        )}
-
-
-        {phase === "complete" && (
-          <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-900">Quiz complete</h2>
-            <p className="mt-2 text-gray-800">Your recommended level: <strong>{computeFinalLevel(history)}</strong></p>
-            <p className="mt-2 text-gray-800">
-              MCQ score: {mcqScore} / {TOTAL_MCQ}
-            </p>
-
-            {weakTopics.length > 0 ? (
-              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
-                <p className="font-semibold text-gray-900">Topics to review</p>
-                <ul className="mt-2 list-disc list-inside text-gray-800">
-                  {weakTopics.map((topic) => (
-                    <li key={topic}>{topic}</li>
-                  ))}
-                </ul>
-                <p className="mt-3 text-gray-900">
-                  Recommended next topic: <strong>{recommendedTopic}</strong>
-                </p>
-              </div>
-            ) : (
-              <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-4">
-                <p className="font-semibold text-gray-900">Great job!</p>
-                <p className="mt-1 text-gray-800">
-                  You did not show a clear weak area in this quiz.
-                </p>
-              </div>
-            )}
-
-            <button
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              onClick={handleRestart}
-            >
-              Retake full quiz
-            </button>
-          </div>
-        )}
       </div>
     </main>
   );
