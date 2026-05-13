@@ -211,7 +211,7 @@ export default function StartFromScratchPage() {
           slicing selects ranges of values.
         </p>
 
-        <nav className="mt-4 sticky top-3 z-10 rounded-xl border border-slate-200/80 bg-white/60 backdrop-blur p-3 shadow-sm ring-1 ring-slate-200">
+        <nav className="mt-4 sticky top-24 z-10 rounded-xl border border-slate-200/80 bg-white/60 backdrop-blur p-3 shadow-sm ring-1 ring-slate-200">
           <p className="text-sm font-semibold text-gray-900">Jump to section</p>
           <div className="mt-2 flex flex-wrap gap-2 text-sm">
             <a href="#quick-concepts" className="text-pink-700 hover:underline">
