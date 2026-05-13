@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type User = {
   name: string;
@@ -199,6 +200,13 @@ export default function LoginPage() {
             </div>
           </div>
 
+          <p className="mt-8 text-center text-sm text-slate-600">
+            After placement, open your{" "}
+            <Link href="/numpy/path" className="font-medium text-sky-700 hover:underline">
+              NumPy learning path
+            </Link>
+            .
+          </p>
         </div>
       </section>
     </main>
