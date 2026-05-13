@@ -73,6 +73,12 @@ function NumpyLearningPathContent() {
   const recommended = payload?.recommendedTopic ?? null;
   const scoreLine =
     payload != null ? `${payload.mcqScore} / ${payload.totalMcq}` : null;
+  const codeScoreLine =
+    payload != null &&
+    typeof payload.codeScore === "number" &&
+    typeof payload.totalCode === "number"
+      ? `${payload.codeScore} / ${payload.totalCode}`
+      : null;
   const completedLine = payload?.completedAt ? formatCompleted(payload.completedAt) : null;
 
   const focusParam =
@@ -100,6 +106,11 @@ function NumpyLearningPathContent() {
             <p className="text-sm font-medium text-slate-600">Recommended level</p>
             <p className="mt-1 text-2xl font-bold text-slate-900">{displayLevel ?? "Unknown"}</p>
             {scoreLine && <p className="mt-2 text-sm text-slate-700">MCQ score: {scoreLine}</p>}
+            {codeScoreLine && (
+              <p className="mt-1 text-sm text-slate-700">
+                Code score (first try): {codeScoreLine}
+              </p>
+            )}
           </div>
 
           {weak.length > 0 ? (
