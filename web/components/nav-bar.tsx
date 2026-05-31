@@ -13,7 +13,7 @@
  const NAV: NavItem[] = [
    { href: "/dashboard", label: "Dashboard" },
    { href: "/find-my-level", label: "Placement" },
-   { href: "/numpy/path", label: "Path", matchPrefix: "/numpy" },
+   { href: "/numpy/path", label: "Path", matchPrefix: "/numpy/path" },
    { href: "/numpy/exercises", label: "Exercises", matchPrefix: "/numpy/exercises" },
    { href: "/start-from-scratch", label: "From scratch", matchPrefix: "/start-from-scratch" },
  ];
