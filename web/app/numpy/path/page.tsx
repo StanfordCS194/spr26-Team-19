@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { canonicalizeTopic, dedupeTopics } from "@/lib/numpy-learning-path";
 import {
   clearNumpyPlacement,
   loadNumpyPlacement,
@@ -69,8 +70,10 @@ function NumpyLearningPathContent() {
     );
   }
 
-  const weak = payload?.weakTopics ?? [];
-  const recommended = payload?.recommendedTopic ?? null;
+  const weak = dedupeTopics(payload?.weakTopics ?? []);
+  const recommended = payload?.recommendedTopic
+    ? canonicalizeTopic(payload.recommendedTopic)
+    : null;
   const scoreLine =
     payload != null ? `${payload.mcqScore} / ${payload.totalMcq}` : null;
   const codeScoreLine =
@@ -88,7 +91,7 @@ function NumpyLearningPathContent() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <Link href="/" className="text-sm text-sky-700 hover:underline">
           Back to home
         </Link>
@@ -142,23 +145,24 @@ function NumpyLearningPathContent() {
           <ul className="mt-4 space-y-3">
             <li>
               <Link
+                href="/numpy/lessons"
+                className="block rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 transition hover:shadow-md"
+              >
+                <span className="font-semibold text-slate-900">Lessons (full curriculum)</span>
+                <span className="mt-1 block text-sm text-slate-600">
+                  Every NumPy beginner topic, grouped into units, with interactive visuals,
+                  playgrounds, and hands-on Python practice.
+                </span>
+              </Link>
+            </li>
+            <li>
+              <Link
                 href={`/numpy/exercises${focusParam}`}
                 className="block rounded-xl border-2 border-sky-300 bg-sky-50/90 p-4 transition hover:shadow-md"
               >
                 <span className="font-semibold text-slate-900">Exercise zone</span>
                 <span className="mt-1 block text-sm text-slate-600">
                   AI MCQ drills and structured code tasks with saved progress (this browser).
-                </span>
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/start-from-scratch"
-                className="block rounded-xl border border-pink-200 bg-gradient-to-br from-pink-50 to-white p-4 transition hover:shadow-md"
-              >
-                <span className="font-semibold text-slate-900">Review concepts and playground</span>
-                <span className="mt-1 block text-sm text-slate-600">
-                  Visuals, reference sections, and typing checks.
                 </span>
               </Link>
             </li>

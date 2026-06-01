@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
+import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
 import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
 
@@ -256,9 +257,12 @@ export default function FindMyLevelPage() {
   }
 
   function getWeakTopics() {
-    return Object.entries(topicMistakes)
-      .sort((a, b) => b[1] - a[1])
-      .map(([topic]) => topic);
+    const merged = new Map<string, number>();
+    for (const [topic, count] of Object.entries(topicMistakes)) {
+      const label = canonicalizeTopic(topic);
+      merged.set(label, (merged.get(label) ?? 0) + count);
+    }
+    return [...merged.entries()].sort((a, b) => b[1] - a[1]).map(([topic]) => topic);
   }
   
   function getRecommendedTopic() {

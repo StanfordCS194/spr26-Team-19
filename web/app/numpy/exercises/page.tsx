@@ -12,6 +12,7 @@ import {
   recordExerciseResult,
   summarizeExerciseProgress,
 } from "@/lib/numpy-exercise-progress";
+import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { loadNumpyPlacement, type NumpyPlacementPayload } from "@/lib/numpy-placement-storage";
 import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
 
@@ -72,6 +73,8 @@ function NumpyExercisesContent() {
     if (placement?.weakTopics?.length) return placement.weakTopics[0]!;
     return "NumPy arrays and indexing";
   }, [placement, searchParams]);
+
+  const topicProgressKey = useMemo(() => slugifyTopic(focusHint), [focusHint]);
 
   useEffect(() => {
     setPlacement(loadNumpyPlacement());
@@ -145,7 +148,7 @@ function NumpyExercisesContent() {
     if (mcqSelected !== null || !mcq) return;
     setMcqSelected(idx);
     const ok = idx === mcq.correctIndex;
-    recordExerciseResult(EXERCISE_ZONE_MCQ_DRILL, ok);
+    recordExerciseResult(EXERCISE_ZONE_MCQ_DRILL, ok, { topicKey: topicProgressKey });
     bumpProgress();
     setPrevTopic(mcq.topic);
   }
@@ -237,7 +240,9 @@ function NumpyExercisesContent() {
       if (!exec.ok) {
         setRunStatus("fail");
         setRunMessage(exec.error ?? "Error");
-        recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false);
+        recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, {
+          topicKey: topicProgressKey,
+        });
         bumpProgress();
         return;
       }
@@ -251,12 +256,12 @@ function NumpyExercisesContent() {
           ? `Passed. Output: ${exec.result.trim()}`
           : `Expected one of: ${challenge.expectedOutputs.join(" | ")}; got ${exec.result.trim()}`,
       );
-      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, passed);
+      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, passed, { topicKey: topicProgressKey });
       bumpProgress();
     } catch (e) {
       setRunStatus("fail");
       setRunMessage(e instanceof Error ? e.message : "Run failed");
-      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false);
+      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, { topicKey: topicProgressKey });
       bumpProgress();
     }
   }
