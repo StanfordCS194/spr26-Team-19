@@ -16,9 +16,12 @@ export type NumpyExerciseProgress = {
   version: typeof NUMPY_EXERCISE_PROGRESS_VERSION;
   updatedAt: string;
   zones: Record<string, ZoneStats>;
+  /** Per-topic stats keyed by slug (see numpy-learning-path.slugifyTopic). */
+  topics?: Record<string, ZoneStats>;
 };
 
-const STORAGE_KEY = "adapted.numpy.exerciseProgress.v1";
+export const NUMPY_EXERCISE_PROGRESS_STORAGE_KEY = "adapted.numpy.exerciseProgress.v1";
+const STORAGE_KEY = NUMPY_EXERCISE_PROGRESS_STORAGE_KEY;
 
 function emptyProgress(): NumpyExerciseProgress {
   return {
@@ -57,10 +60,20 @@ export function loadNumpyExerciseProgress(): NumpyExerciseProgress | null {
     for (const [id, stats] of Object.entries(zones)) {
       if (typeof id !== "string" || !isZoneStats(stats)) return null;
     }
+    let topics: Record<string, ZoneStats> | undefined;
+    if (o.topics != null) {
+      if (typeof o.topics !== "object") return null;
+      topics = {};
+      for (const [id, stats] of Object.entries(o.topics as Record<string, unknown>)) {
+        if (typeof id !== "string" || !isZoneStats(stats)) return null;
+        topics[id] = stats;
+      }
+    }
     return {
       version: NUMPY_EXERCISE_PROGRESS_VERSION,
       updatedAt: o.updatedAt,
       zones: zones as Record<string, ZoneStats>,
+      ...(topics ? { topics } : {}),
     };
   } catch {
     return null;
@@ -85,7 +98,11 @@ export function clearNumpyExerciseProgress(): void {
   }
 }
 
-export function recordExerciseResult(zoneId: string, isCorrect: boolean): NumpyExerciseProgress {
+export function recordExerciseResult(
+  zoneId: string,
+  isCorrect: boolean,
+  options?: { topicKey?: string },
+): NumpyExerciseProgress {
   const prev = loadNumpyExerciseProgress() ?? emptyProgress();
   const zones = { ...prev.zones };
   const cur = zones[zoneId] ?? { attempted: 0, correct: 0 };
@@ -93,10 +110,23 @@ export function recordExerciseResult(zoneId: string, isCorrect: boolean): NumpyE
     attempted: cur.attempted + 1,
     correct: cur.correct + (isCorrect ? 1 : 0),
   };
+
+  let topics = prev.topics ? { ...prev.topics } : undefined;
+  const topicKey = options?.topicKey?.trim();
+  if (topicKey) {
+    topics = topics ?? {};
+    const tCur = topics[topicKey] ?? { attempted: 0, correct: 0 };
+    topics[topicKey] = {
+      attempted: tCur.attempted + 1,
+      correct: tCur.correct + (isCorrect ? 1 : 0),
+    };
+  }
+
   const next: NumpyExerciseProgress = {
     version: NUMPY_EXERCISE_PROGRESS_VERSION,
     updatedAt: new Date().toISOString(),
     zones,
+    ...(topics ? { topics } : {}),
   };
   saveNumpyExerciseProgress(next);
   return next;

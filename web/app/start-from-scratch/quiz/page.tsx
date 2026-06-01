@@ -460,8 +460,8 @@ export default function BasicsQuizPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
       <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
-        <a href="/start-from-scratch" className="text-sm text-blue-600 hover:underline">
-          Back to basics page
+        <a href="/numpy/lessons" className="text-sm text-blue-600 hover:underline">
+          Back to lessons
         </a>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Basics quiz</h1>
         {phase === "mcq" && (

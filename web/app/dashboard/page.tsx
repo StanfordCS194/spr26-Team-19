@@ -107,14 +107,14 @@ export default function DashboardPage() {
           {/* Learning path cards */}
           <div className="mt-10 grid gap-4 md:grid-cols-2">
             <Link
-              href="/start-from-scratch"
+              href="/numpy/lessons"
               className="group rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500"
             >
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-600">
                 Beginner path
               </p>
               <h2 className="mt-2 text-2xl font-bold text-slate-900">
-                Start from scratch
+                Lessons
               </h2>
               <p className="mt-2 text-slate-700">
                 Build intuition with interactive visuals, guided practice, and

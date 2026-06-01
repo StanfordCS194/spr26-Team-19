@@ -13,10 +13,10 @@
  const NAV: NavItem[] = [
    { href: "/dashboard", label: "Dashboard" },
    { href: "/find-my-level", label: "Placement" },
-   { href: "/numpy/path", label: "Path", matchPrefix: "/numpy/path" },
-   { href: "/numpy/exercises", label: "Exercises", matchPrefix: "/numpy/exercises" },
-   { href: "/start-from-scratch", label: "From scratch", matchPrefix: "/start-from-scratch" },
- ];
+  { href: "/numpy/path", label: "Path", matchPrefix: "/numpy/path" },
+  { href: "/numpy/lessons", label: "Lessons", matchPrefix: "/numpy/lessons" },
+  { href: "/numpy/exercises", label: "Exercises", matchPrefix: "/numpy/exercises" },
+];
  
  function isActive(pathname: string, item: NavItem): boolean {
    if (item.matchPrefix) return pathname === item.matchPrefix || pathname.startsWith(`${item.matchPrefix}/`);
