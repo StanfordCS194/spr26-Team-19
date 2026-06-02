@@ -61,3 +61,63 @@ kbd {
   font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, "Liberation Mono", "Courier New", monospace;
 }
+
+/* Celebration / completion modal animations */
+@keyframes adapted-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes adapted-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes adapted-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(120px) rotate(220deg);
+  }
+}
+
+.adapted-pop-in {
+  animation: adapted-pop-in 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+}
+
+.adapted-fade-in {
+  animation: adapted-fade-in 0.2s ease-out both;
+}
+
+.adapted-confetti {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  animation: adapted-confetti-fall 1.4s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adapted-pop-in,
+  .adapted-fade-in,
+  .adapted-confetti {
+    animation: none;
+  }
+}

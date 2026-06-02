@@ -1,6 +1,11 @@
 /** Mastery thresholds shared by lesson progress badges. */
 export const PATH_MASTERY_PERCENT = 70;
-export const PATH_MIN_ATTEMPTS = 2;
+export const PATH_MIN_ATTEMPTS = 4;
+/**
+ * Mastery is judged over a rolling window of the most recent attempts, so a
+ * rough start doesn't permanently tank accuracy — older results "roll off".
+ */
+export const PATH_RECENT_WINDOW = 5;
 
 export function slugifyTopic(topic: string): string {
   return topic

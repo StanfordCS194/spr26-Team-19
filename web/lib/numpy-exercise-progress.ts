@@ -2,6 +2,8 @@
  * NumPy exercise zone progress (localStorage). Swap for API-backed storage when profiles ship.
  */
 
+import { PATH_RECENT_WINDOW } from "@/lib/numpy-learning-path";
+
 export const NUMPY_EXERCISE_PROGRESS_VERSION = 1 as const;
 
 export const EXERCISE_ZONE_MCQ_DRILL = "mcq_drill";
@@ -10,6 +12,11 @@ export const EXERCISE_ZONE_CODE_LAB = "code_lab";
 export type ZoneStats = {
   attempted: number;
   correct: number;
+  /**
+   * Outcomes of the most recent attempts (capped at PATH_RECENT_WINDOW), newest
+   * last. Used for rolling-window mastery on per-topic stats.
+   */
+  recent?: boolean[];
 };
 
 export type NumpyExerciseProgress = {
@@ -34,6 +41,12 @@ function emptyProgress(): NumpyExerciseProgress {
 function isZoneStats(v: unknown): v is ZoneStats {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
+  if (
+    o.recent !== undefined &&
+    (!Array.isArray(o.recent) || !o.recent.every((b) => typeof b === "boolean"))
+  ) {
+    return false;
+  }
   return (
     typeof o.attempted === "number" &&
     o.attempted >= 0 &&
@@ -115,10 +128,12 @@ export function recordExerciseResult(
   const topicKey = options?.topicKey?.trim();
   if (topicKey) {
     topics = topics ?? {};
-    const tCur = topics[topicKey] ?? { attempted: 0, correct: 0 };
+    const tCur = topics[topicKey] ?? { attempted: 0, correct: 0, recent: [] };
+    const recent = [...(tCur.recent ?? []), isCorrect].slice(-PATH_RECENT_WINDOW);
     topics[topicKey] = {
       attempted: tCur.attempted + 1,
       correct: tCur.correct + (isCorrect ? 1 : 0),
+      recent,
     };
   }
 

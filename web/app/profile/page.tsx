@@ -1,8 +1,13 @@
 "use client";
  
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getPlacementCompletedServerSnapshot,
+  getPlacementCompletedSnapshot,
+  subscribePlacementCompleted,
+} from "@/lib/numpy-placement-storage";
  
 type User = {
   name: string;
@@ -27,6 +32,12 @@ export default function ProfilePage() {
     motivation: "Casual learning",
     preferredLibrary: "NumPy",
   });
+
+  const placementDone = useSyncExternalStore(
+    subscribePlacementCompleted,
+    getPlacementCompletedSnapshot,
+    getPlacementCompletedServerSnapshot,
+  );
  
   useEffect(() => {
     const savedUser = localStorage.getItem("adaptedCurrentUser");
@@ -151,7 +162,26 @@ export default function ProfilePage() {
             </div>
  
           </div>
- 
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">
+                Placement quiz
+              </p>
+              <p className="mt-2 text-sm text-slate-700">
+                {placementDone
+                  ? "You’ve completed placement. Retake it anytime to refresh your level and focus topics."
+                  : "Take the placement quiz to unlock your personalized NumPy path."}
+              </p>
+            </div>
+            <Link
+              href="/find-my-level"
+              className="shrink-0 rounded-xl border border-sky-300 bg-white px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+            >
+              {placementDone ? "Take this quiz again!" : "Take placement quiz"}
+            </Link>
+          </div>
+
           <div className="mt-8 flex flex-wrap gap-3">
             <button
               onClick={handleSaveProfile}
