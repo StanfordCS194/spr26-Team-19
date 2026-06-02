@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { CompletionModal } from "@/components/completion-modal";
 import { PythonCodeEditor } from "@/components/python-code";
 import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
 import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
+
+type PlacementResult = {
+  level: string;
+  mcqScore: number;
+  totalMcq: number;
+  codeScore: number;
+  totalCode: number;
+  recommendedTopic: string | null;
+};
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type PlacementQuestion = {
@@ -190,7 +199,6 @@ function computeFinalLevel(
 
 
 export default function FindMyLevelPage() {
-  const router = useRouter();
   const [phase, setPhase] = useState<"mcq" | "code">("mcq");
   // 2-slot + buffer pipeline:
   // - currentQuestion: visible now
@@ -219,6 +227,7 @@ export default function FindMyLevelPage() {
 
   const [codeIndex, setCodeIndex] = useState(0);
   const [firstTryPassedIds, setFirstTryPassedIds] = useState<string[]>([]);
+  const [completion, setCompletion] = useState<PlacementResult | null>(null);
   const [challengeAttempts, setChallengeAttempts] = useState<Record<string, number>>({});
   const [codeInput, setCodeInput] = useState(placementCodingChallenges[0]!.starterCode);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
@@ -524,17 +533,25 @@ export default function FindMyLevelPage() {
   }
   function goToPlacementHub() {
     const level = computeFinalLevel(history, firstTryPassedIds.length, TOTAL_CODE);
+    const recommendedTopic = getRecommendedTopic();
     saveNumpyPlacement({
       level,
       weakTopics: getWeakTopics(),
-      recommendedTopic: getRecommendedTopic(),
+      recommendedTopic,
       mcqScore,
       totalMcq: TOTAL_MCQ,
       codeScore: firstTryPassedIds.length,
       totalCode: TOTAL_CODE,
       completedAt: new Date().toISOString(),
     });
-    router.push(`/numpy/path?level=${encodeURIComponent(level)}`);
+    setCompletion({
+      level,
+      mcqScore,
+      totalMcq: TOTAL_MCQ,
+      codeScore: firstTryPassedIds.length,
+      totalCode: TOTAL_CODE,
+      recommendedTopic,
+    });
   }
 
   return (
@@ -728,6 +745,36 @@ export default function FindMyLevelPage() {
           </>
         )}
       </div>
+
+      <CompletionModal
+        open={completion !== null}
+        emoji="🏆"
+        title="Placement complete!"
+        message="Nice work — here’s where you landed. Your personalized path is ready."
+        highlight={completion ? { label: "Your level", value: completion.level } : undefined}
+        stats={
+          completion
+            ? [
+                {
+                  label: "MCQ score",
+                  value: `${completion.mcqScore} / ${completion.totalMcq}`,
+                },
+                {
+                  label: "Code (first try)",
+                  value: `${completion.codeScore} / ${completion.totalCode}`,
+                },
+                ...(completion.recommendedTopic
+                  ? [{ label: "Start with", value: completion.recommendedTopic }]
+                  : []),
+              ]
+            : undefined
+        }
+        primaryAction={{
+          label: "See my learning path →",
+          href: `/numpy/path?level=${encodeURIComponent(completion?.level ?? "")}`,
+        }}
+        secondaryAction={{ label: "Go to dashboard", href: "/dashboard" }}
+      />
     </main>
   );
 }

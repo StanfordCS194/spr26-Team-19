@@ -68,7 +68,14 @@ export type LessonProgress = {
   status: LessonStatus;
 };
 
-/** Per-lesson progress derived from the topic key (slug of lesson.focus). */
+/**
+ * Per-lesson progress derived from the topic key (slug of lesson.focus).
+ *
+ * Mastery uses a rolling window of the most recent attempts (PATH_RECENT_WINDOW)
+ * so a rough start doesn't permanently block mastery. The reported
+ * attempted/correct reflect that window once any windowed attempt exists; we
+ * fall back to all-time totals for legacy data without a recent window.
+ */
 export function lessonProgress(
   progress: NumpyExerciseProgress | null,
   lesson: Lesson,
@@ -77,14 +84,15 @@ export function lessonProgress(
     attempted: 0,
     correct: 0,
   };
-  const percent =
-    stats.attempted === 0 ? null : Math.round((100 * stats.correct) / stats.attempted);
-  const mastered =
-    stats.attempted >= PATH_MIN_ATTEMPTS && (percent ?? 0) >= PATH_MASTERY_PERCENT;
+  const hasWindow = Array.isArray(stats.recent) && stats.recent.length > 0;
+  const attempted = hasWindow ? stats.recent!.length : stats.attempted;
+  const correct = hasWindow ? stats.recent!.filter(Boolean).length : stats.correct;
+  const percent = attempted === 0 ? null : Math.round((100 * correct) / attempted);
+  const mastered = attempted >= PATH_MIN_ATTEMPTS && (percent ?? 0) >= PATH_MASTERY_PERCENT;
   return {
-    attempted: stats.attempted,
-    correct: stats.correct,
+    attempted,
+    correct,
     percent,
-    status: mastered ? "mastered" : stats.attempted > 0 ? "in_progress" : "new",
+    status: mastered ? "mastered" : attempted > 0 ? "in_progress" : "new",
   };
 }
