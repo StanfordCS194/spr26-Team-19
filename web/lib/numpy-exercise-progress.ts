@@ -2,6 +2,7 @@
  * NumPy exercise zone progress (localStorage). Swap for API-backed storage when profiles ship.
  */
 
+import { scopedStorageKey } from "@/lib/current-user";
 import { PATH_RECENT_WINDOW } from "@/lib/numpy-learning-path";
 
 export const NUMPY_EXERCISE_PROGRESS_VERSION = 1 as const;
@@ -28,7 +29,11 @@ export type NumpyExerciseProgress = {
 };
 
 export const NUMPY_EXERCISE_PROGRESS_STORAGE_KEY = "adapted.numpy.exerciseProgress.v1";
-const STORAGE_KEY = NUMPY_EXERCISE_PROGRESS_STORAGE_KEY;
+
+/** Per-account storage key (so progress doesn't leak between users on a browser). */
+export function numpyProgressStorageKey(): string {
+  return scopedStorageKey(NUMPY_EXERCISE_PROGRESS_STORAGE_KEY);
+}
 
 function emptyProgress(): NumpyExerciseProgress {
   return {
@@ -61,7 +66,7 @@ function isZoneStats(v: unknown): v is ZoneStats {
 export function loadNumpyExerciseProgress(): NumpyExerciseProgress | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(numpyProgressStorageKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return null;
@@ -96,7 +101,7 @@ export function loadNumpyExerciseProgress(): NumpyExerciseProgress | null {
 export function saveNumpyExerciseProgress(data: NumpyExerciseProgress): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(numpyProgressStorageKey(), JSON.stringify(data));
   } catch {
     /* quota / private mode */
   }
@@ -105,7 +110,7 @@ export function saveNumpyExerciseProgress(data: NumpyExerciseProgress): void {
 export function clearNumpyExerciseProgress(): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(numpyProgressStorageKey());
   } catch {
     /* noop */
   }

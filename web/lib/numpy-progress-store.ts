@@ -6,10 +6,12 @@
  * only re-parse when it changes. A custom event lets same-tab writers (e.g. the
  * lesson practice runner) trigger an immediate refresh.
  */
+import { CURRENT_USER_KEY } from "@/lib/current-user";
 import type { Lesson } from "@/lib/numpy-curriculum";
 import {
   loadNumpyExerciseProgress,
   NUMPY_EXERCISE_PROGRESS_STORAGE_KEY,
+  numpyProgressStorageKey,
   type NumpyExerciseProgress,
 } from "@/lib/numpy-exercise-progress";
 import {
@@ -25,7 +27,10 @@ let cachedValue: NumpyExerciseProgress | null = null;
 
 export function getProgressSnapshot(): NumpyExerciseProgress | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(NUMPY_EXERCISE_PROGRESS_STORAGE_KEY);
+  // Include the scoped key in the cache token so switching accounts re-parses
+  // even when two users happen to have identical raw blobs.
+  const key = numpyProgressStorageKey();
+  const raw = `${key}\u0000${window.localStorage.getItem(key) ?? ""}`;
   if (raw === cachedRaw) return cachedValue;
   cachedRaw = raw;
   cachedValue = loadNumpyExerciseProgress();
@@ -38,7 +43,13 @@ export function getProgressServerSnapshot(): NumpyExerciseProgress | null {
 
 export function subscribeProgress(callback: () => void): () => void {
   const onStorage = (e: StorageEvent) => {
-    if (e.key === NUMPY_EXERCISE_PROGRESS_STORAGE_KEY) callback();
+    if (
+      e.key === null ||
+      e.key === CURRENT_USER_KEY ||
+      e.key.startsWith(NUMPY_EXERCISE_PROGRESS_STORAGE_KEY)
+    ) {
+      callback();
+    }
   };
   window.addEventListener("focus", callback);
   document.addEventListener("visibilitychange", callback);
