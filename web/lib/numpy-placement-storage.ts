@@ -10,26 +10,17 @@ export type NumpyPlacementPayload = {
   completedAt: string;
 };
 
+import { CURRENT_USER_KEY, currentUserEmail, scopedStorageKey } from "@/lib/current-user";
+
 export const NUMPY_PLACEMENT_STORAGE_KEY = "adapted.numpy.placement.v1";
 
 /**
- * The session payload (above) is per-tab, but whether a user has *ever* taken
- * placement should persist. Track that per account email in localStorage so the
- * nav can hide Placement for returning users while new signups still see it.
+ * Both the results payload and the "ever taken" flag are persisted in
+ * localStorage, namespaced per account email, so results survive across
+ * sessions and don't leak between users on the same browser.
  */
 const PLACEMENT_COMPLETED_KEY = "adapted.numpy.placementCompleted.v1";
 const PLACEMENT_COMPLETED_EVENT = "adapted-placement-completed-change";
-
-function currentUserEmail(): string | null {
-  try {
-    const raw = localStorage.getItem("adaptedCurrentUser");
-    if (!raw) return null;
-    const u = JSON.parse(raw) as { email?: unknown };
-    return typeof u.email === "string" ? u.email : null;
-  } catch {
-    return null;
-  }
-}
 
 function readCompletedMap(): Record<string, string> {
   try {
@@ -67,7 +58,7 @@ export function hasCompletedPlacement(): boolean {
 /** External-store adapter so React can read completion with useSyncExternalStore. */
 export function subscribePlacementCompleted(callback: () => void): () => void {
   const onStorage = (e: StorageEvent) => {
-    if (e.key === PLACEMENT_COMPLETED_KEY || e.key === "adaptedCurrentUser") callback();
+    if (e.key === PLACEMENT_COMPLETED_KEY || e.key === CURRENT_USER_KEY) callback();
   };
   window.addEventListener("focus", callback);
   window.addEventListener("storage", onStorage);
@@ -90,7 +81,7 @@ export function getPlacementCompletedServerSnapshot(): boolean {
 export function saveNumpyPlacement(payload: NumpyPlacementPayload): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(NUMPY_PLACEMENT_STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(scopedStorageKey(NUMPY_PLACEMENT_STORAGE_KEY), JSON.stringify(payload));
   } catch {
     /* ignore */
   }
@@ -101,7 +92,7 @@ export function saveNumpyPlacement(payload: NumpyPlacementPayload): void {
 export function loadNumpyPlacement(): NumpyPlacementPayload | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(NUMPY_PLACEMENT_STORAGE_KEY);
+    const raw = localStorage.getItem(scopedStorageKey(NUMPY_PLACEMENT_STORAGE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return null;
@@ -137,7 +128,7 @@ export function loadNumpyPlacement(): NumpyPlacementPayload | null {
 export function clearNumpyPlacement(): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.removeItem(NUMPY_PLACEMENT_STORAGE_KEY);
+    localStorage.removeItem(scopedStorageKey(NUMPY_PLACEMENT_STORAGE_KEY));
   } catch {
     /* ignore */
   }
