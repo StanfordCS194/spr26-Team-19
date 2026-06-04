@@ -1,3 +1,11 @@
+import {
+  checkAnswerSet,
+  checkArrayEqual,
+  checkScalar,
+  checkShape,
+  checkShapeTuple,
+} from "@/lib/numpy-code-validate";
+
 /**
  * NumPy curriculum modeled on the official "absolute beginners" guide.
  * Single source of truth for the lessons page, path-map defaults, and the
@@ -16,8 +24,13 @@ export type LessonPractice = {
   prompt: string;
   /** Must import numpy and initialize `answer`. */
   starterCode: string;
-  /** Accepted repr(answer) variants; matched after whitespace is stripped. */
-  expectedOutputs: string[];
+  /**
+   * Legacy accepted repr(answer) variants (graded in Python via env checks).
+   * Omit when `checks` is provided.
+   */
+  expectedOutputs?: string[];
+  /** Env assertions evaluated after the learner's code runs (preferred). */
+  checks?: CodeChallengeCheck[];
   hint: string;
 };
 
@@ -80,7 +93,14 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Build the 2x3 array [[1, 2, 3], [4, 5, 6]] and store it in `answer`.",
           starterCode: "import numpy as np\n\n# Make a 2x3 array\nanswer = None",
-          expectedOutputs: ["array([[1, 2, 3], [4, 5, 6]])"],
+          checks: [
+            checkAnswerSet(),
+            checkShape([2, 3]),
+            checkArrayEqual([
+              [1, 2, 3],
+              [4, 5, 6],
+            ]),
+          ],
           hint: "Pass a list of two lists to np.array.",
         },
       },
@@ -102,7 +122,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Set `answer` to the first element of `a`.",
           starterCode: "import numpy as np\n\na = np.array([10, 20, 30, 40])\nanswer = None",
-          expectedOutputs: ["np.int64(10)", "10"],
+          checks: [checkAnswerSet(), checkScalar(10)],
           hint: "Arrays are zero-indexed: use a[0].",
         },
       },
@@ -117,7 +137,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           prompt: "Set `answer` to the shape of `a`.",
           starterCode:
             "import numpy as np\n\na = np.array([[1, 2, 3], [4, 5, 6]])\nanswer = None",
-          expectedOutputs: ["(2, 3)"],
+          checks: [checkAnswerSet(), checkShapeTuple([2, 3])],
           hint: "Use the .shape attribute (no parentheses).",
         },
       },
@@ -132,7 +152,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Use np.arange to build the array [2, 4, 6, 8] and store it in `answer`.",
           starterCode: "import numpy as np\n\nanswer = None",
-          expectedOutputs: ["array([2, 4, 6, 8])"],
+          checks: [checkAnswerSet(), checkArrayEqual([2, 4, 6, 8])],
           hint: "np.arange(start, stop, step) stops before `stop`.",
         },
       },
@@ -200,7 +220,17 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Reshape np.arange(6) into a 3x2 array stored in `answer`.",
           starterCode: "import numpy as np\n\nanswer = None",
-          expectedOutputs: ["array([[0, 1], [2, 3], [4, 5]])"],
+          checks: [
+            checkAnswerSet(),
+            checkShape([3, 2]),
+            {
+              id: "reshape-values",
+              assert: "np.array_equal(answer, np.arange(6).reshape(3, 2))",
+              message: "Reshape np.arange(6) into a 3×2 array.",
+              capture: "answer",
+              skill: "shapes",
+            },
+          ],
           hint: "Chain it: np.arange(6).reshape(3, 2).",
         },
       },
@@ -214,7 +244,11 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Turn `a` into a column vector of shape (3, 1) stored in `answer`.",
           starterCode: "import numpy as np\n\na = np.array([1, 2, 3])\nanswer = None",
-          expectedOutputs: ["array([[1], [2], [3]])"],
+          checks: [
+            checkAnswerSet(),
+            checkShape([3, 1]),
+            checkArrayEqual([[1], [2], [3]]),
+          ],
           hint: "Add the new axis in the second slot: a[:, np.newaxis].",
         },
       },
@@ -252,7 +286,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Set `answer` to the last two elements of `a` using a slice.",
           starterCode: "import numpy as np\n\na = np.array([10, 20, 30, 40, 50])\nanswer = None",
-          expectedOutputs: ["array([40, 50])"],
+          checks: [checkAnswerSet(), checkArrayEqual([40, 50])],
           hint: "Negative indices count from the end: a[-2:].",
         },
       },
@@ -266,7 +300,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         practice: {
           prompt: "Set `answer` to the sum of all values in `x`.",
           starterCode: "import numpy as np\n\nx = np.array([1, 2, 3, 4])\nanswer = None",
-          expectedOutputs: ["np.int64(10)", "10"],
+          checks: [checkAnswerSet(), checkScalar(10)],
           hint: "Use x.sum() or np.sum(x).",
         },
       },
@@ -313,7 +347,7 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           prompt: "Set `answer` to the element at row 1, column 0 of matrix `m`.",
           starterCode:
             "import numpy as np\n\nm = np.array([[1, 2], [3, 4], [5, 6]])\nanswer = None",
-          expectedOutputs: ["np.int64(3)", "3"],
+          checks: [checkAnswerSet(), checkScalar(3)],
           hint: "Index with [row, col]: m[1, 0].",
         },
       },

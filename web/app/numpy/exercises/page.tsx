@@ -12,9 +12,10 @@ import {
   recordExerciseResult,
   summarizeExerciseProgress,
 } from "@/lib/numpy-exercise-progress";
+import { runAndValidateChallenge, type CodeChallengeCheck } from "@/lib/numpy-code-validate";
 import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { loadNumpyPlacement, type NumpyPlacementPayload } from "@/lib/numpy-placement-storage";
-import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
+import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 
 type DrillMcq = {
   topic: string;
@@ -30,7 +31,8 @@ type CodeChallenge = {
   topic: string;
   prompt: string;
   starterCode: string;
-  expectedOutputs: string[];
+  expectedOutputs?: string[];
+  checks?: CodeChallengeCheck[];
   hint: string;
 };
 
@@ -55,10 +57,6 @@ answer = None`,
   expectedOutputs: ["[20, 30, 40]", "array([20, 30, 40])"],
   hint: "Use slicing with start index 1 and end index 4.",
 };
-
-function normalizeOutput(raw: string): string {
-  return raw.trim().replace(/\s+/g, "");
-}
 
 function NumpyExercisesContent() {
   const searchParams = useSearchParams();
@@ -200,20 +198,22 @@ function NumpyExercisesContent() {
       });
       if (!res.ok) throw new Error("bad");
       const data = (await res.json()) as Record<string, unknown>;
-      if (
-        typeof data.id !== "string" ||
-        typeof data.prompt !== "string" ||
-        typeof data.starterCode !== "string" ||
-        !Array.isArray(data.expectedOutputs)
-      ) {
+      if (typeof data.id !== "string" || typeof data.prompt !== "string" || typeof data.starterCode !== "string") {
         throw new Error("shape");
       }
+      const hasChecks = Array.isArray(data.checks) && data.checks.length > 0;
+      const hasExpected =
+        Array.isArray(data.expectedOutputs) && data.expectedOutputs.length > 0;
+      if (!hasChecks && !hasExpected) throw new Error("shape");
       const ch: CodeChallenge = {
         id: data.id,
         topic: typeof data.topic === "string" ? data.topic : "general",
         prompt: data.prompt,
         starterCode: data.starterCode,
-        expectedOutputs: data.expectedOutputs as string[],
+        expectedOutputs: Array.isArray(data.expectedOutputs)
+          ? (data.expectedOutputs as string[])
+          : undefined,
+        checks: Array.isArray(data.checks) ? (data.checks as CodeChallengeCheck[]) : undefined,
         hint: typeof data.hint === "string" ? data.hint : "",
       };
       setChallenge(ch);
@@ -236,27 +236,15 @@ function NumpyExercisesContent() {
     setRunStatus("running");
     setRunMessage("Running…");
     try {
-      const exec = await runPythonInWorker(`${codeInput}\nrepr(answer)`);
-      if (!exec.ok) {
-        setRunStatus("fail");
-        setRunMessage(exec.error ?? "Error");
-        recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, {
-          topicKey: topicProgressKey,
-        });
-        bumpProgress();
-        return;
-      }
-      const out = normalizeOutput(exec.result);
-      const passed = challenge.expectedOutputs.some(
-        (exp) => normalizeOutput(exp) === out,
-      );
-      setRunStatus(passed ? "pass" : "fail");
-      setRunMessage(
-        passed
-          ? `Passed. Output: ${exec.result.trim()}`
-          : `Expected one of: ${challenge.expectedOutputs.join(" | ")}; got ${exec.result.trim()}`,
-      );
-      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, passed, { topicKey: topicProgressKey });
+      const outcome = await runAndValidateChallenge(codeInput, {
+        expectedOutputs: challenge.expectedOutputs,
+        checks: challenge.checks,
+      });
+      setRunStatus(outcome.passed ? "pass" : "fail");
+      setRunMessage(outcome.message);
+      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, outcome.passed, {
+        topicKey: topicProgressKey,
+      });
       bumpProgress();
     } catch (e) {
       setRunStatus("fail");
@@ -366,9 +354,8 @@ function NumpyExercisesContent() {
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Structured code tasks</h2>
             <p className="mt-1 text-sm text-slate-600">
-              Set <code className="rounded bg-slate-100 px-1">answer</code> so{" "}
-              <code className="rounded bg-slate-100 px-1">repr(answer)</code> matches an expected
-              value. Graded runs update your progress.
+              Set <code className="rounded bg-slate-100 px-1">answer</code>; your code runs in Python
+              and is checked with assertions in that environment. Graded runs update your progress.
             </p>
             {codeError && <p className="mt-2 text-sm text-amber-700">{codeError}</p>}
             {pyodideLoading && <p className="mt-2 text-sm text-amber-800">Loading Python…</p>}

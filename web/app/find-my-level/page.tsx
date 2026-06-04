@@ -6,7 +6,8 @@ import { CompletionModal } from "@/components/completion-modal";
 import { PythonCodeEditor } from "@/components/python-code";
 import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
-import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
+import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
+import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 
 type PlacementResult = {
   level: string;
@@ -261,10 +262,6 @@ export default function FindMyLevelPage() {
     };
   }, []);
 
-  function normalizeOutput(raw: string): string {
-    return raw.trim().replace(/\s+/g, "");
-  }
-
   function getWeakTopics() {
     const merged = new Map<string, number>();
     for (const [topic, count] of Object.entries(topicMistakes)) {
@@ -459,25 +456,15 @@ export default function FindMyLevelPage() {
     setChallengeAttempts((prev) => ({ ...prev, [codeChallenge.id]: attemptsSoFar + 1 }));
 
     try {
-      const exec = await runPythonInWorker(`${codeInput}\nrepr(answer)`);
-      if (!exec.ok) {
-        setRunStatus("fail");
-        setRunMessage(`Execution error: ${exec.error}`);
-        return;
-      }
-      const output = exec.result.trim();
-      const printed = exec.stdout.trim();
-      const normalizedOutput = normalizeOutput(output);
-      const passed = codeChallenge.expectedOutputs.some(
-        (expected) => normalizeOutput(expected) === normalizedOutput,
-      );
+      const outcome = await runAndValidateChallenge(codeInput, {
+        expectedOutputs: codeChallenge.expectedOutputs,
+      });
+      const passed = outcome.passed;
       setRunStatus(passed ? "pass" : "fail");
-      const printLine = printed ? ` Program output: ${printed}` : "";
-      setRunMessage(
-        passed
-          ? `Passed. Value: ${output}.${printLine}`
-          : `Value was ${output}. Expected one of: ${codeChallenge.expectedOutputs.join(" or ")}.${printLine}`,
-      );
+      const printLine = outcome.stdout.trim()
+        ? ` Program output: ${outcome.stdout.trim()}`
+        : "";
+      setRunMessage(`${outcome.message}${printLine}`);
       if (passed) {
         if (attemptsSoFar === 0) {
           setFirstTryPassedIds((prev) => {

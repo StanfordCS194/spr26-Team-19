@@ -4,6 +4,36 @@ type RunResult =
   | { ok: true; result: string; stdout: string }
   | { ok: false; error: string };
 
+/** A structured assertion run against the learner's namespace by the worker. */
+export type SmartCheck = {
+  id: string;
+  /** Python boolean expression evaluated in the learner namespace after exec. */
+  assert: string;
+  message: string;
+  capture?: string;
+  skill?: string;
+  targetVar?: string;
+};
+
+export type ValidationFailure = {
+  checkId: string;
+  skill: string;
+  targetVar: string;
+  message: string;
+  actualRepr: string | null;
+};
+
+export type ValidationResult =
+  | {
+      ok: true;
+      passed: boolean;
+      error: { message: string; type: string; line: number | null } | null;
+      failures: ValidationFailure[];
+      answerRepr: string | null;
+      stdout: string;
+    }
+  | { ok: false; error: string };
+
 let worker: Worker | null = null;
 let whenReady: Promise<void> | null = null;
 const pending = new Map<number, (r: RunResult) => void>();
@@ -68,3 +98,46 @@ export function runPythonInWorker(code: string): Promise<RunResult> {
     });
   })();
 }
+/**
+ * Runs the learner's code and evaluates structured checks against it. Returns which checks
+ * failed (tagged by skill) so the UI can render inline diagnostics and targeted fixes,
+ * instead of a single pass/fail string.
+ */
+export function validatePythonInWorker(
+  code: string,
+  checks: SmartCheck[],
+): Promise<ValidationResult> {
+  return (async () => {
+    await ensurePyodideWorker();
+    if (!worker) {
+      return { ok: false, error: "Worker not available" };
+    }
+    const id = nextId++;
+    const raw = await new Promise<RunResult>((resolve) => {
+      pending.set(id, resolve);
+      worker!.postMessage({ id, cmd: "validate", code, checks });
+    });
+    if (!raw.ok) {
+      return { ok: false, error: raw.error };
+    }
+    try {
+      const parsed = JSON.parse(raw.result) as {
+        passed: boolean;
+        error: { message: string; type: string; line: number | null } | null;
+        failures: ValidationFailure[];
+        answerRepr?: string | null;
+      };
+      return {
+        ok: true,
+        passed: parsed.passed,
+        error: parsed.error,
+        failures: parsed.failures ?? [],
+        answerRepr: parsed.answerRepr ?? null,
+        stdout: raw.stdout,
+      };
+    } catch {
+      return { ok: false, error: "Could not parse validation result" };
+    }
+  })();
+}
+
