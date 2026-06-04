@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
-import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
+import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
+import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
@@ -240,11 +241,6 @@ export default function BasicsQuizPage() {
     };
   }, []);
 
-  function normalizeOutput(raw: string): string {
-    // Normalize superficial formatting differences before output comparison.
-    return raw.trim().replace(/\s+/g, "");
-  }
-
   function getFallbackQuestion(existingPrompts: Set<string>): QuizQuestion {
     // Prefer unseen fallback prompts first, otherwise allow reuse.
     const candidate = fallbackMcqBank.find((item) => !existingPrompts.has(item.prompt));
@@ -375,29 +371,15 @@ export default function BasicsQuizPage() {
     setChallengeAttempts((prev) => ({ ...prev, [codeChallenge.id]: attemptsSoFar + 1 }));
 
     try {
-      // Convention: learner sets `answer`; we evaluate repr(answer) for deterministic compare.
-      // Execution happens in a Web Worker; print() is captured and shown as program output.
-      const exec = await runPythonInWorker(`${codeInput}\nrepr(answer)`);
-      if (!exec.ok) {
-        setRunStatus("fail");
-        setRunMessage(`Execution error: ${exec.error}`);
-        return;
-      }
-      const output = exec.result.trim();
-      const printed = exec.stdout.trim();
-      const normalizedOutput = normalizeOutput(output);
-      const passed = codeChallenge.expectedOutputs.some(
-        (expected) => normalizeOutput(expected) === normalizedOutput,
-      );
+      const outcome = await runAndValidateChallenge(codeInput, {
+        expectedOutputs: codeChallenge.expectedOutputs,
+      });
+      const passed = outcome.passed;
       setRunStatus(passed ? "pass" : "fail");
-      const printLine = printed
-        ? ` Program output: ${printed}`
+      const printLine = outcome.stdout.trim()
+        ? ` Program output: ${outcome.stdout.trim()}`
         : "";
-      setRunMessage(
-        passed
-          ? `Passed. Value: ${output}.${printLine}`
-          : `Value was ${output}. Expected one of: ${codeChallenge.expectedOutputs.join(" or ")}.${printLine}`,
-      );
+      setRunMessage(`${outcome.message}${printLine}`);
       if (passed) {
         // Completion tracking (any attempt).
         setPassedChallengeIds((prev) => {

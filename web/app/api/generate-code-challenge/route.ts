@@ -25,8 +25,8 @@ Generate ONE small beginner NumPy coding exercise as strict JSON.
 Difficulty: ${difficulty}.
 Lean on this learner focus (variable names / story can reflect it): ${focus}.
 
-The learner runs code in Pyodide in the browser. They must set a variable named \`answer\`
-to a value we can check with Python repr(answer).
+The learner runs code in Pyodide in the browser. They must set a variable named \`answer\`.
+Grading runs their code in an isolated Python namespace, then evaluates \`checks\` (boolean expressions).
 
 Return ONLY JSON with this exact schema:
 {
@@ -34,15 +34,23 @@ Return ONLY JSON with this exact schema:
   "topic": "string",
   "prompt": "string (what to do, 1-3 sentences)",
   "starterCode": "string (must include import numpy as np and set answer = None initially)",
-  "expectedOutputs": ["string", ...],
+  "checks": [
+    {
+      "id": "string",
+      "assert": "string (Python expression; must be truthy after learner code runs; may use answer, np)",
+      "message": "string (shown when this check fails)",
+      "capture": "answer"
+    }
+  ],
   "hint": "string"
 }
 
 Rules:
 - starterCode must be valid Python that runs in Pyodide with NumPy loaded.
 - Use at most ~12 lines in starterCode.
-- expectedOutputs: 1-4 strings; each is a valid repr(answer) OR common alternate (e.g. with/without spaces in tuples).
-- The exercise must be objectively checkable via repr(answer) equality after normalization (spaces collapsed).
+- Provide 1-3 checks. Prefer semantic assertions (e.g. answer.shape == (2,), np.array_equal(answer, expected)) over raw repr strings.
+- Each check's assert must be safe to eval in the learner namespace after exec(starterCode + edits).
+- capture should usually be "answer".
 
 No markdown, no code fences.
 `;
@@ -93,16 +101,29 @@ No markdown, no code fences.
       .replace(/\s*```$/, "");
     const parsed = JSON.parse(normalizedContent) as Record<string, unknown>;
 
+    const checksRaw = parsed.checks;
+    const checksValid =
+      Array.isArray(checksRaw) &&
+      checksRaw.length >= 1 &&
+      checksRaw.length <= 4 &&
+      checksRaw.every((c) => {
+        if (!c || typeof c !== "object") return false;
+        const row = c as Record<string, unknown>;
+        return (
+          typeof row.id === "string" &&
+          typeof row.assert === "string" &&
+          typeof row.message === "string" &&
+          (row.capture === undefined || typeof row.capture === "string")
+        );
+      });
+
     if (
       typeof parsed.id !== "string" ||
       typeof parsed.topic !== "string" ||
       typeof parsed.prompt !== "string" ||
       typeof parsed.starterCode !== "string" ||
       typeof parsed.hint !== "string" ||
-      !Array.isArray(parsed.expectedOutputs) ||
-      parsed.expectedOutputs.length < 1 ||
-      parsed.expectedOutputs.length > 6 ||
-      !parsed.expectedOutputs.every((x) => typeof x === "string")
+      !checksValid
     ) {
       return NextResponse.json(
         { error: "Invalid LLM response schema", details: parsed },
@@ -115,7 +136,7 @@ No markdown, no code fences.
       topic: parsed.topic,
       prompt: parsed.prompt,
       starterCode: parsed.starterCode,
-      expectedOutputs: parsed.expectedOutputs as string[],
+      checks: checksRaw,
       hint: parsed.hint,
     });
   } catch (error) {

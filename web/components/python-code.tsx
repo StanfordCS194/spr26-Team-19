@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { OnMount } from "@monaco-editor/react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
@@ -89,6 +90,8 @@ type PythonCodeEditorProps = {
   minHeight?: string;
   /** Distinct path so multiple editors on one page do not share a Monaco model. */
   modelPath?: string;
+  /** Access the underlying editor + monaco instance (markers, code actions, etc.). */
+  onMount?: OnMount;
 };
 
 /**
@@ -101,6 +104,7 @@ export function PythonCodeEditor({
   className,
   minHeight = "12rem",
   modelPath: modelPathProp,
+  onMount,
 }: PythonCodeEditorProps) {
   const reactId = useId();
   const modelPath =
@@ -115,6 +119,7 @@ export function PythonCodeEditor({
       language="python"
       theme="light"
       value={value}
+      onMount={onMount}
       onChange={(v) => onChange(v ?? "")}
       options={{
         minimap: { enabled: false },

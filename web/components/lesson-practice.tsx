@@ -6,11 +6,8 @@ import type { Lesson } from "@/lib/numpy-curriculum";
 import { EXERCISE_ZONE_CODE_LAB, recordExerciseResult } from "@/lib/numpy-exercise-progress";
 import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { notifyProgressChange } from "@/lib/numpy-progress-store";
-import { ensurePyodideWorker, runPythonInWorker } from "@/lib/pyodide-web-worker";
-
-function normalizeOutput(raw: string): string {
-  return raw.trim().replace(/\s+/g, "");
-}
+import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
+import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 
 export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const practice = lesson.practice;
@@ -53,24 +50,13 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
     setRunStatus("running");
     setRunMessage("Running…");
     try {
-      const exec = await runPythonInWorker(`${code}\nrepr(answer)`);
-      if (!exec.ok) {
-        setRunStatus("fail");
-        setRunMessage(exec.error ?? "Error");
-        record(false);
-        return;
-      }
-      const out = normalizeOutput(exec.result);
-      const passed = practice.expectedOutputs.some(
-        (exp) => normalizeOutput(exp) === out,
-      );
-      setRunStatus(passed ? "pass" : "fail");
-      setRunMessage(
-        passed
-          ? `Passed. answer = ${exec.result.trim()}`
-          : `Not yet. Expected one of: ${practice.expectedOutputs.join(" | ")}; got ${exec.result.trim()}`,
-      );
-      record(passed);
+      const outcome = await runAndValidateChallenge(code, {
+        expectedOutputs: practice.expectedOutputs,
+        checks: practice.checks,
+      });
+      setRunStatus(outcome.passed ? "pass" : "fail");
+      setRunMessage(outcome.message);
+      record(outcome.passed);
     } catch (e) {
       setRunStatus("fail");
       setRunMessage(e instanceof Error ? e.message : "Run failed");
