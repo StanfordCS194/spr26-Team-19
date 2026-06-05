@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
+import { XPToast } from "@/components/xp-toast";
 import type { Lesson } from "@/lib/numpy-curriculum";
-import { EXERCISE_ZONE_CODE_LAB, recordExerciseResult } from "@/lib/numpy-exercise-progress";
+import { EXERCISE_ZONE_CODE_LAB, loadNumpyExerciseProgress, recordExerciseResult } from "@/lib/numpy-exercise-progress";
 import { slugifyTopic } from "@/lib/numpy-learning-path";
-import { notifyProgressChange } from "@/lib/numpy-progress-store";
+import { lessonProgress, notifyProgressChange } from "@/lib/numpy-progress-store";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
 
 export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const practice = lesson.practice;
@@ -17,6 +19,7 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const [showHint, setShowHint] = useState(false);
   const [pyodideLoading, setPyodideLoading] = useState(true);
   const [pyodideError, setPyodideError] = useState("");
+  const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,15 +43,14 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const canRun = !pyodideLoading && !pyodideError;
   const topicKey = slugifyTopic(lesson.focus);
 
-  function record(passed: boolean) {
-    recordExerciseResult(EXERCISE_ZONE_CODE_LAB, passed, { topicKey });
-    notifyProgressChange();
-  }
-
   async function runCode() {
     if (!canRun || !practice) return;
     setRunStatus("running");
     setRunMessage("Running…");
+
+    // Snapshot mastery state BEFORE running so we can detect a transition.
+    const wasAlreadyMastered = lessonProgress(loadNumpyExerciseProgress(), lesson).status === "mastered";
+
     try {
       const outcome = await runAndValidateChallenge(code, {
         expectedOutputs: practice.expectedOutputs,
@@ -56,11 +58,25 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
       });
       setRunStatus(outcome.passed ? "pass" : "fail");
       setRunMessage(outcome.message);
-      record(outcome.passed);
+      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, outcome.passed, { topicKey });
+      notifyProgressChange();
+
+      if (outcome.passed) {
+        // Check if this run pushed the lesson to mastered for the first time.
+        const nowMastered = lessonProgress(loadNumpyExerciseProgress(), lesson).status === "mastered";
+        if (nowMastered && !wasAlreadyMastered) {
+          const result = awardXPWithResult("lesson_mastered");
+          setXpToast({
+            amount: XP_AWARD.lesson_mastered,
+            ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
+          });
+        }
+      }
     } catch (e) {
       setRunStatus("fail");
       setRunMessage(e instanceof Error ? e.message : "Run failed");
-      record(false);
+      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, { topicKey });
+      notifyProgressChange();
     }
   }
 
@@ -123,6 +139,11 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
           {runMessage}
         </p>
       )}
+      <XPToast
+        amount={xpToast?.amount ?? null}
+        levelUpTier={xpToast?.levelUpTier}
+        onDone={() => setXpToast(null)}
+      />
     </section>
   );
 }

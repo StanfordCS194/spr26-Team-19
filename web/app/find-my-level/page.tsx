@@ -6,7 +6,7 @@ import { CompletionModal } from "@/components/completion-modal";
 import { PythonCodeEditor } from "@/components/python-code";
 import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
-import { awardXP, XP_AWARD } from "@/lib/xp-store";
+import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
 import { XPToast } from "@/components/xp-toast";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
@@ -365,7 +365,7 @@ export default function FindMyLevelPage() {
   const [pyodideLoading, setPyodideLoading] = useState(true);
   const [pyodideError, setPyodideError] = useState("");
   const canRunPython = !pyodideLoading && !pyodideError;
-  const [xpToast, setXpToast] = useState<number | null>(null);
+  const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
 
   const question = currentQuestion; // Alias for readability in JSX.
   const hasAnswered = selected !== null;
@@ -531,8 +531,8 @@ export default function FindMyLevelPage() {
     ]);
     if (answerWasCorrect) {
       setMcqScore((prev) => prev + 1);
-      awardXP("mcq_correct");
-      setXpToast(XP_AWARD.mcq_correct);
+      const r = awardXPWithResult("mcq_correct");
+      setXpToast({ amount: XP_AWARD.mcq_correct, ...(r.leveledUp ? { levelUpTier: r.newTier } : {}) });
     } else {
       setTopicMistakes((prev) => ({
         ...prev,
@@ -601,11 +601,11 @@ export default function FindMyLevelPage() {
             if (prev.includes(codeChallenge.id)) return prev;
             return [...prev, codeChallenge.id];
           });
-          awardXP("code_first_try");
-          setXpToast(XP_AWARD.code_first_try);
+          const r1 = awardXPWithResult("code_first_try");
+          setXpToast({ amount: XP_AWARD.code_first_try, ...(r1.leveledUp ? { levelUpTier: r1.newTier } : {}) });
         } else {
-          awardXP("code_pass");
-          setXpToast(XP_AWARD.code_pass);
+          const r2 = awardXPWithResult("code_pass");
+          setXpToast({ amount: XP_AWARD.code_pass, ...(r2.leveledUp ? { levelUpTier: r2.newTier } : {}) });
         }
       } else if (attemptsSoFar === 0) {
         setTopicMistakes((prev) => ({
@@ -666,8 +666,8 @@ export default function FindMyLevelPage() {
       totalCode: TOTAL_CODE,
       completedAt: new Date().toISOString(),
     });
-    awardXP("placement_complete");
-    setXpToast(XP_AWARD.placement_complete);
+    const rp = awardXPWithResult("placement_complete");
+    setXpToast({ amount: XP_AWARD.placement_complete, ...(rp.leveledUp ? { levelUpTier: rp.newTier } : {}) });
     setCompletion({
       level,
       mcqScore,
@@ -919,7 +919,7 @@ export default function FindMyLevelPage() {
         }}
         secondaryAction={{ label: "Go to dashboard", href: "/dashboard" }}
       />
-      <XPToast amount={xpToast} onDone={() => setXpToast(null)} />
+      <XPToast amount={xpToast?.amount ?? null} levelUpTier={xpToast?.levelUpTier} onDone={() => setXpToast(null)} />
     </main>
   );
 }

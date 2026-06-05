@@ -2,10 +2,19 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
-import { awardXP, XP_AWARD } from "@/lib/xp-store";
+import {
+  awardXPWithResult,
+  XP_AWARD,
+  getTierForXP,
+  getXPProgressInTier,
+  getNextTier,
+  getXPSnapshot,
+  getXPServerSnapshot,
+  subscribeXP,
+} from "@/lib/xp-store";
 import { PythonCodeEditor } from "@/components/python-code";
 import {
   EXERCISE_ZONE_CODE_LAB,
@@ -97,7 +106,13 @@ function NumpyExercisesContent() {
   const [mcqError, setMcqError] = useState<string | null>(null);
   const [prevTopic, setPrevTopic] = useState<string | undefined>(undefined);
   const [mcqSelected, setMcqSelected] = useState<number | null>(null);
-  const [xpToast, setXpToast] = useState<number | null>(null);
+  const [seenMcqPrompts, setSeenMcqPrompts] = useState<string[]>([]);
+  const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+
+  const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
+  const tier = getTierForXP(xpRecord.total);
+  const nextTier = getNextTier(xpRecord.total);
+  const xpProgress = getXPProgressInTier(xpRecord.total);
 
   const loadMcq = useCallback(async () => {
     setMcqLoading(true);
@@ -111,6 +126,7 @@ function NumpyExercisesContent() {
           difficulty: "medium",
           focusTopic: focusHint,
           previousTopic: prevTopic,
+          seenPrompts: seenMcqPrompts,
         }),
       });
       if (!res.ok) throw new Error("Request failed");
@@ -125,14 +141,18 @@ function NumpyExercisesContent() {
       ) {
         throw new Error("Bad shape");
       }
-      setMcq({
+      const newMcq: DrillMcq = {
         topic: typeof data.topic === "string" ? data.topic : "general",
         prompt: data.prompt as string,
         choices: data.choices as string[],
         correctIndex: data.correctIndex as number,
         explanation: typeof data.explanation === "string" ? data.explanation : "",
         hint: typeof data.hint === "string" ? data.hint : undefined,
-      });
+      };
+      setMcq(newMcq);
+      setSeenMcqPrompts((prev) =>
+        prev.includes(newMcq.prompt) ? prev : [...prev, newMcq.prompt],
+      );
     } catch {
       setMcq(FALLBACK_MCQ);
       setMcqError("Using fallback question (API unavailable or invalid response).");
@@ -151,8 +171,11 @@ function NumpyExercisesContent() {
     const ok = idx === mcq.correctIndex;
     recordExerciseResult(EXERCISE_ZONE_MCQ_DRILL, ok, { topicKey: topicProgressKey });
     if (ok) {
-      awardXP("mcq_correct");
-      setXpToast(XP_AWARD.mcq_correct);
+      const result = awardXPWithResult("mcq_correct");
+      setXpToast({
+        amount: XP_AWARD.mcq_correct,
+        ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
+      });
     }
     bumpProgress();
     setPrevTopic(mcq.topic);
@@ -255,8 +278,11 @@ function NumpyExercisesContent() {
       setRunMessage(outcome.message);
       if (outcome.passed) {
         const eventType = attemptNum === 0 ? "code_first_try" : "code_pass";
-        awardXP(eventType);
-        setXpToast(XP_AWARD[eventType]);
+        const result = awardXPWithResult(eventType);
+        setXpToast({
+          amount: XP_AWARD[eventType],
+          ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
+        });
       }
       recordExerciseResult(EXERCISE_ZONE_CODE_LAB, outcome.passed, {
         topicKey: topicProgressKey,
@@ -282,15 +308,37 @@ function NumpyExercisesContent() {
           </p>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <ExerciseProgressRing percent={summary.overallPercent} />
-          <div className="text-sm text-slate-600">
-            <p>
-              Attempts: <strong>{summary.totalAttempted}</strong>
-            </p>
-            <p>
-              Correct: <strong>{summary.totalCorrect}</strong>
-            </p>
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <ExerciseProgressRing percent={summary.overallPercent} />
+            <div className="flex flex-col items-end gap-1.5">
+              {/* Tier badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{tier.icon}</span>
+                <div className="text-right">
+                  <p className={`text-xs font-semibold uppercase tracking-widest ${tier.colorClass}`}>{tier.name}</p>
+                  <p className="text-lg font-black text-slate-900">{xpRecord.total} XP</p>
+                </div>
+              </div>
+              {/* XP progress bar to next tier */}
+              {nextTier && (
+                <div className="w-40">
+                  <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                    <span>{xpProgress.xpInTier} / {xpProgress.tierSize} XP</span>
+                    <span>{nextTier.name} {nextTier.icon}</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-pink-500 to-sky-500 transition-all duration-500"
+                      style={{ width: `${xpProgress.pct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-slate-400">
+                {summary.totalAttempted} attempts · {summary.totalCorrect} correct
+              </p>
+            </div>
           </div>
         </div>
 
@@ -420,7 +468,11 @@ function NumpyExercisesContent() {
           </section>
         )}
       </div>
-      <XPToast amount={xpToast} onDone={() => setXpToast(null)} />
+      <XPToast
+        amount={xpToast?.amount ?? null}
+        levelUpTier={xpToast?.levelUpTier}
+        onDone={() => setXpToast(null)}
+      />
     </main>
   );
 }
