@@ -4,6 +4,7 @@ import {
   checkScalar,
   checkShape,
   checkShapeTuple,
+  type CodeChallengeCheck,
 } from "@/lib/numpy-code-validate";
 
 /**
