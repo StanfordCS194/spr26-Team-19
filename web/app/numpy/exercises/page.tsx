@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
+import { XPToast } from "@/components/xp-toast";
+import { awardXP, XP_AWARD } from "@/lib/xp-store";
 import { PythonCodeEditor } from "@/components/python-code";
 import {
   EXERCISE_ZONE_CODE_LAB,
@@ -95,6 +97,7 @@ function NumpyExercisesContent() {
   const [mcqError, setMcqError] = useState<string | null>(null);
   const [prevTopic, setPrevTopic] = useState<string | undefined>(undefined);
   const [mcqSelected, setMcqSelected] = useState<number | null>(null);
+  const [xpToast, setXpToast] = useState<number | null>(null);
 
   const loadMcq = useCallback(async () => {
     setMcqLoading(true);
@@ -147,6 +150,10 @@ function NumpyExercisesContent() {
     setMcqSelected(idx);
     const ok = idx === mcq.correctIndex;
     recordExerciseResult(EXERCISE_ZONE_MCQ_DRILL, ok, { topicKey: topicProgressKey });
+    if (ok) {
+      awardXP("mcq_correct");
+      setXpToast(XP_AWARD.mcq_correct);
+    }
     bumpProgress();
     setPrevTopic(mcq.topic);
   }
@@ -158,6 +165,7 @@ function NumpyExercisesContent() {
   /* —— Code lab —— */
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
+  const codeAttemptRef = useRef(0);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
@@ -216,6 +224,7 @@ function NumpyExercisesContent() {
         checks: Array.isArray(data.checks) ? (data.checks as CodeChallengeCheck[]) : undefined,
         hint: typeof data.hint === "string" ? data.hint : "",
       };
+      codeAttemptRef.current = 0;
       setChallenge(ch);
       setCodeInput(ch.starterCode);
     } catch {
@@ -235,6 +244,8 @@ function NumpyExercisesContent() {
     if (!canRun || !challenge) return;
     setRunStatus("running");
     setRunMessage("Running…");
+    const attemptNum = codeAttemptRef.current;
+    codeAttemptRef.current += 1;
     try {
       const outcome = await runAndValidateChallenge(codeInput, {
         expectedOutputs: challenge.expectedOutputs,
@@ -242,6 +253,11 @@ function NumpyExercisesContent() {
       });
       setRunStatus(outcome.passed ? "pass" : "fail");
       setRunMessage(outcome.message);
+      if (outcome.passed) {
+        const eventType = attemptNum === 0 ? "code_first_try" : "code_pass";
+        awardXP(eventType);
+        setXpToast(XP_AWARD[eventType]);
+      }
       recordExerciseResult(EXERCISE_ZONE_CODE_LAB, outcome.passed, {
         topicKey: topicProgressKey,
       });
@@ -404,6 +420,7 @@ function NumpyExercisesContent() {
           </section>
         )}
       </div>
+      <XPToast amount={xpToast} onDone={() => setXpToast(null)} />
     </main>
   );
 }

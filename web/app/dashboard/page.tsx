@@ -178,6 +178,38 @@ export default function DashboardPage() {
             </p>
           </div>
 
+          {/* Onboarding guide — only shown before placement is done */}
+          {!placementDone && (
+            <div className="mt-6 rounded-2xl border-2 border-sky-300 bg-gradient-to-br from-sky-50 to-white p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">Get started</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">3 steps to your personalized path</h2>
+              <ol className="mt-4 space-y-3">
+                {([
+                  { done: true,        label: "Create your account",                   href: null,             cta: null },
+                  { done: !!profile,   label: "Set your learning goal",                href: "/profile",       cta: "Set goal →" },
+                  { done: false,       label: "Find your level  (~5 min quiz)",        href: "/find-my-level", cta: "Start now →" },
+                ] as { done: boolean; label: string; href: string | null; cta: string | null }[]).map((step, i) => (
+                  <li key={i} className="flex items-center gap-3">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? "bg-emerald-100 text-emerald-700" : i === (profile ? 2 : 1) ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-500"}`}>
+                      {step.done ? "✓" : i + 1}
+                    </div>
+                    <span className={`flex-1 text-sm ${step.done ? "text-slate-400 line-through" : "font-medium text-slate-900"}`}>
+                      {step.label}
+                    </span>
+                    {!step.done && step.href && (
+                      <Link
+                        href={step.href}
+                        className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${i === (profile ? 2 : 1) ? "bg-sky-600 text-white hover:bg-sky-700" : "border border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                      >
+                        {step.cta}
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {/* Profile pills */}
           {profile && (
             <div className="mt-4 flex flex-wrap gap-2">

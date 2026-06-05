@@ -59,7 +59,8 @@ export default function ProfilePage() {
  
   function handleSaveProfile() {
     localStorage.setItem("adaptedProfile", JSON.stringify(profile));
-    router.push("/dashboard");
+    // New users (no placement yet) go straight to the diagnostic — the most important next step.
+    router.push(placementDone ? "/dashboard" : "/find-my-level");
   }
  
   function handleLogout() {
@@ -98,12 +99,21 @@ export default function ProfilePage() {
             </span>
           </div>
  
+          {!placementDone && (
+            <div className="mt-5 flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white">1</div>
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Step 1 of 2:</span> Set your learning goal, then we&apos;ll run a quick diagnostic to find your level.
+              </p>
+            </div>
+          )}
+
           <h1 className="mt-5 text-4xl font-black tracking-tight text-slate-900 md:text-5xl">
-            Build your AdaptED profile
+            {placementDone ? "Your profile" : "Let's get you set up"}
           </h1>
- 
+
           <p className="mt-4 max-w-2xl text-lg text-slate-700">
-            Hi {user.name}, tell us how you want to learn so we can shape your AdaptED journey!
+            Hi {user.name}! {placementDone ? "Update your learning preferences below." : "Tell us how you want to learn — takes 30 seconds."}
           </p>
  
           <div className="mt-10 grid gap-5 md:grid-cols-2">
@@ -187,7 +197,7 @@ export default function ProfilePage() {
               onClick={handleSaveProfile}
               className="rounded-2xl bg-gradient-to-r from-pink-500 to-sky-500 px-6 py-3 font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
             >
-              Save profile
+              {placementDone ? "Save profile" : "Save & take placement quiz →"}
             </button>
  
             <button
