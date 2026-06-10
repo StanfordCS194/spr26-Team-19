@@ -40,6 +40,7 @@ import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 import { pickCuratedCodeChallenge } from "@/lib/numpy-code-challenge-quality";
 import { pickRotatingCodeLesson } from "@/lib/numpy-code-topics";
 import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
+import { pickFallbackMcq } from "@/lib/numpy-mcq-bank";
 
 type DrillMcq = {
   topic: string;
@@ -58,15 +59,6 @@ type CodeChallenge = {
   expectedOutputs?: string[];
   checks?: CodeChallengeCheck[];
   hint: string;
-};
-
-const FALLBACK_MCQ: DrillMcq = {
-  topic: "indexing",
-  prompt: "In NumPy, what does `arr[0]` return for a 1D array?",
-  choices: ["The last element", "The first element", "A copy of the array", "The dtype only"],
-  correctIndex: 1,
-  explanation: "Index 0 selects the first element in a 0-based array.",
-  hint: "Python and NumPy use 0-based indexing.",
 };
 
 function NumpyExercisesContent() {
@@ -165,7 +157,13 @@ function NumpyExercisesContent() {
         prev.includes(newMcq.prompt) ? prev : [...prev, newMcq.prompt],
       );
     } catch {
-      setMcq(FALLBACK_MCQ);
+      // Rotate through the local bank (preferring unseen prompts) instead of
+      // repeating one hard-coded question every time generation fails.
+      const fallback = pickFallbackMcq(seenMcqPrompts);
+      setMcq(fallback);
+      setSeenMcqPrompts((prev) =>
+        prev.includes(fallback.prompt) ? prev : [...prev, fallback.prompt],
+      );
       setMcqError("Using fallback question (API unavailable or invalid response).");
     } finally {
       setMcqLoading(false);
