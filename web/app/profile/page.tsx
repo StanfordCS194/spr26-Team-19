@@ -17,6 +17,12 @@ import {
   getNextTier,
   subscribeXP,
 } from "@/lib/xp-store";
+import {
+  ALL_BADGES,
+  getBadgesServerSnapshot,
+  getBadgesSnapshot,
+  subscribeBadges,
+} from "@/lib/achievements";
 
 type User = {
   name: string;
@@ -53,6 +59,7 @@ export default function ProfilePage() {
   const tier = getTierForXP(xpRecord.total);
   const nextTier = getNextTier(xpRecord.total);
   const xpProgress = getXPProgressInTier(xpRecord.total);
+  const earnedBadges = useSyncExternalStore(subscribeBadges, getBadgesSnapshot, getBadgesServerSnapshot);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("adaptedCurrentUser");
@@ -170,6 +177,36 @@ export default function ProfilePage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Badges section — shown once at least one badge has been earned */}
+          {earnedBadges.length > 0 && (
+            <div className="mt-6 rounded-2xl border border-white/80 bg-white/50 p-5 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                  Badges — {earnedBadges.length}/{ALL_BADGES.length} earned
+                </p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {ALL_BADGES.map((badge) => {
+                  const earned = earnedBadges.some((b) => b.id === badge.id);
+                  return (
+                    <div
+                      key={badge.id}
+                      title={earned ? badge.description : "Not yet earned"}
+                      className={`flex flex-col items-center gap-1 rounded-xl border p-3 text-center transition ${
+                        earned
+                          ? "border-purple-200 bg-purple-50"
+                          : "border-slate-100 bg-slate-50 opacity-35 grayscale"
+                      }`}
+                    >
+                      <span className="text-2xl">{badge.icon}</span>
+                      <span className="text-[10px] font-semibold text-slate-700">{badge.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
