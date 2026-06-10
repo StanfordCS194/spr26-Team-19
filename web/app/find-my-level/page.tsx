@@ -304,6 +304,19 @@ type placementGenerationRequest = {
   focusTopic?: string;
   seenPrompts?: string[];
 };
+/**
+ * Compute final placement level from MCQ history and code challenge results.
+ *
+ * Updated for the 4-MCQ + 4-code format: with fewer MCQs the adaptive engine
+ * rarely reaches "hard" difficulty, so hard-correct counts alone can't be the
+ * deciding gate. Code first-try accuracy is now the primary signal for
+ * Advanced/Intermediate because the four coding challenges cover a meaningful
+ * breadth of NumPy skills (boolean indexing, shape ops, slicing, aggregation).
+ *
+ * Thresholds are deliberately lower than the old 8-MCQ version because the
+ * total sample is smaller and we'd rather place a borderline learner at
+ * Intermediate (and let them progress) than keep them at Beginner.
+ */
 function computeFinalLevel(
   mcqHistory: AnsweredQuestion[],
   codeFirstTryPassed: number,
@@ -311,9 +324,15 @@ function computeFinalLevel(
 ): string {
   const totalSlots = mcqHistory.length + totalCode;
   if (totalSlots === 0) return "Beginner";
+
   const mcqCorrect = mcqHistory.filter((a) => a.isCorrect).length;
   const correct = mcqCorrect + codeFirstTryPassed;
   const overallAccuracy = correct / totalSlots;
+
+  // Code-only accuracy (0–1) — first-try passes reflect genuine mastery.
+  const codeAccuracy = totalCode > 0 ? codeFirstTryPassed / totalCode : 0;
+
+  // Hard MCQ signals (may be 0 if adaptive difficulty never reached "hard").
   const hardAttempts = mcqHistory.filter((a) => a.difficulty === "hard");
   const hardAccuracy =
     hardAttempts.length > 0
@@ -321,12 +340,15 @@ function computeFinalLevel(
       : 0;
   const hardCorrect = hardAttempts.filter((a) => a.isCorrect).length;
 
-  if (overallAccuracy >= 0.7 && hardAccuracy >= 0.8 && hardCorrect >= 2) {
-    return "Advanced";
-  }
-  if (overallAccuracy >= 0.7 && hardAccuracy >= 0.5 && hardCorrect >= 1) {
-    return "Intermediate";
-  }
+  // Advanced: strong overall + at least 3/4 code first-try, or hard MCQ evidence.
+  if (overallAccuracy >= 0.75 && codeAccuracy >= 0.75) return "Advanced";
+  if (overallAccuracy >= 0.75 && hardCorrect >= 1 && hardAccuracy >= 0.8) return "Advanced";
+
+  // Intermediate: solid overall + at least half the code challenges first-try,
+  // or demonstrated ability on hard MCQs.
+  if (overallAccuracy >= 0.6 && codeAccuracy >= 0.5) return "Intermediate";
+  if (overallAccuracy >= 0.6 && hardCorrect >= 1) return "Intermediate";
+
   return "Beginner";
 }
 
