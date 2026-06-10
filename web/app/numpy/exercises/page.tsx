@@ -567,6 +567,28 @@ function NumpyExercisesContent() {
               )}
             </div>
           </div>
+
+          {/* Weak topics this session */}
+          {Object.keys(topicMistakes).length > 0 && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                Topics to review this session
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(topicMistakes)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5)
+                  .map(([topic, count]) => (
+                    <span
+                      key={topic}
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                    >
+                      {topic} · {count} miss{count > 1 ? "es" : ""}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center gap-2 border-b border-slate-200 pb-2">
