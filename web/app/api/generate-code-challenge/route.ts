@@ -1,11 +1,143 @@
 import { NextResponse } from "next/server";
+import { groqJsonChat } from "@/lib/groq-json-chat";
+import {
+  isWeakCodeChallenge,
+  pickCuratedCodeChallenge,
+  promptHasCodeLiterals,
+} from "@/lib/numpy-code-challenge-quality";
+import { reviewCodeChallengeWithLlm } from "@/lib/numpy-code-challenge-review";
+import {
+  buildCurriculumGenerationContext,
+  lessonById,
+  resolveLessonForFocus,
+} from "@/lib/numpy-code-topics";
+import type { CodeChallengeCheck } from "@/lib/numpy-code-validate";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
+import { normalizePromptDigits } from "@/lib/numpy-prompt-style";
 
 type Difficulty = "easy" | "medium" | "hard";
 
 type RequestBody = {
   focusTopic?: string;
+  /** Preferred: explicit curriculum lesson id from client rotation. */
+  lessonId?: string;
   difficulty?: Difficulty;
+  seenPrompts?: string[];
+  reinforceWeakTopic?: string;
 };
+
+type ParsedChallenge = {
+  id: string;
+  topic: string;
+  prompt: string;
+  starterCode: string;
+  checks: CodeChallengeCheck[];
+  hint: string;
+};
+
+function buildPrompt(
+  difficulty: Difficulty,
+  lessonContext: string,
+  reinforce: string | undefined,
+  seenBlock: string,
+): string {
+  return `
+Generate ONE NumPy coding exercise as strict JSON for the curriculum lesson below.
+Difficulty: ${difficulty}.
+${reinforce ? `Learner struggled with "${reinforce}" — simpler variant of the SAME lesson skill.` : ""}
+${seenBlock}
+
+${lessonContext}
+
+Learner sets variable \`answer\`. Grading runs Python \`checks\` after their code.
+
+Schema:
+{"id":"kebab-case","topic":"exact lesson focus string","prompt":"plain English","starterCode":"import numpy as np","checks":[{"id":"string","assert":"python expr","message":"string","capture":"answer"}],"hint":"string"}
+
+Rules:
+- Match the lesson "Task type" above — do NOT default to generic 1D slice unless that lesson is indexing/slicing.
+- Prompt style: short and natural. State data values with normal digits (5, 15, 25, 35) — NEVER spell numbers as words ("five", "fifteen").
+- Forbidden in prompt: Python code, assignments, np.* calls. Allowed: digit lists, index positions (0-based), shapes like 3×2.
+- Example prompt: "Build a 1D array from 5, 15, 25, and 35. Set answer to the element at index 2."
+- Never use "the middle element" on even-length arrays (4 values has no single middle) — use an index or "two middle elements".
+- Exactly 2 checks: (1) source exists with expected values (2) answer derived from source.
+- Vary numbers from any reference exercise.
+- starterCode: import numpy as np
+`;
+}
+
+function parseChallengeContent(content: string): ParsedChallenge | null {
+  const normalizedContent = content
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "");
+  const parsed = JSON.parse(normalizedContent) as Record<string, unknown>;
+
+  const checksRaw = parsed.checks;
+  const checksValid =
+    Array.isArray(checksRaw) &&
+    checksRaw.length >= 2 &&
+    checksRaw.length <= 4 &&
+    checksRaw.every((c) => {
+      if (!c || typeof c !== "object") return false;
+      const row = c as Record<string, unknown>;
+      return (
+        typeof row.id === "string" &&
+        typeof row.assert === "string" &&
+        typeof row.message === "string" &&
+        (row.capture === undefined || typeof row.capture === "string")
+      );
+    });
+
+  if (
+    typeof parsed.id !== "string" ||
+    typeof parsed.topic !== "string" ||
+    typeof parsed.prompt !== "string" ||
+    typeof parsed.starterCode !== "string" ||
+    typeof parsed.hint !== "string" ||
+    !checksValid
+  ) {
+    return null;
+  }
+
+  return {
+    id: parsed.id,
+    topic: parsed.topic,
+    prompt: parsed.prompt,
+    starterCode: parsed.starterCode,
+    checks: checksRaw as CodeChallengeCheck[],
+    hint: parsed.hint,
+  };
+}
+
+async function requestChallengeFromLlm(
+  apiKey: string,
+  model: string,
+  userPrompt: string,
+): Promise<ParsedChallenge | null> {
+  const content = await groqJsonChat(
+    apiKey,
+    model,
+    [
+      {
+        role: "system",
+        content:
+          "You write NumPy drills tied to a curriculum lesson. Prompts use digit literals (5, 15), never spelled-out numbers. No Python code in prompts. JSON only.",
+      },
+      { role: "user", content: userPrompt },
+    ],
+    0.55,
+  );
+
+  if (!content) return null;
+
+  try {
+    return parseChallengeContent(content);
+  } catch (error) {
+    console.error("Failed to parse code challenge JSON", { content, error });
+    return null;
+  }
+}
 
 export async function POST(req: Request) {
   const apiKey = process.env.GROQ_API_KEY;
@@ -17,130 +149,123 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json()) as RequestBody;
-  const difficulty: Difficulty = body.difficulty ?? "medium";
-  const focus = body.focusTopic?.trim() || "NumPy arrays and indexing";
-
-  const prompt = `
-Generate ONE small beginner NumPy coding exercise as strict JSON.
-Difficulty: ${difficulty}.
-Lean on this learner focus (variable names / story can reflect it): ${focus}.
-
-The learner runs code in Pyodide in the browser. They must set a variable named \`answer\`.
-Grading runs their code in an isolated Python namespace, then evaluates \`checks\` (boolean expressions).
-
-Return ONLY JSON with this exact schema:
-{
-  "id": "string (kebab-case, short)",
-  "topic": "string",
-  "prompt": "string (what to do, 1-3 sentences)",
-  "starterCode": "string (must include import numpy as np and set answer = None initially)",
-  "checks": [
-    {
-      "id": "string",
-      "assert": "string (Python expression; must be truthy after learner code runs; may use answer, np)",
-      "message": "string (shown when this check fails)",
-      "capture": "answer"
-    }
-  ],
-  "hint": "string"
-}
-
-Rules:
-- starterCode must be valid Python that runs in Pyodide with NumPy loaded.
-- Use at most ~12 lines in starterCode.
-- Provide 1-3 checks. Prefer semantic assertions (e.g. answer.shape == (2,), np.array_equal(answer, expected)) over raw repr strings.
-- Each check's assert must be safe to eval in the learner namespace after exec(starterCode + edits).
-- capture should usually be "answer".
-
-No markdown, no code fences.
-`;
+  const reinforce = body.reinforceWeakTopic?.trim();
+  const difficulty: Difficulty =
+    reinforce ? "easy" : (body.difficulty ?? "medium");
+  const lesson =
+    lessonById(body.lessonId) ??
+    resolveLessonForFocus(
+      reinforce || body.focusTopic?.trim() || "indexing and slicing",
+    );
+  const lessonContext = buildCurriculumGenerationContext(lesson);
+  const seenBlock =
+    body.seenPrompts?.length
+      ? `\nAvoid repeating:\n${body.seenPrompts.slice(0, 6).map((p, i) => `${i + 1}. ${p}`).join("\n")}\n`
+      : "";
 
   const model = process.env.GROQ_MODEL ?? "groq/compound-mini";
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.55,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an educational coding exercise generator. Return only valid JSON with exactly the requested fields.",
-        },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
+  const reviewModel = process.env.GROQ_REVIEW_MODEL ?? model;
+  const basePrompt = buildPrompt(difficulty, lessonContext, reinforce, seenBlock);
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Groq code-challenge failed", { model, errorText });
-    return NextResponse.json(
-      { error: "LLM request failed", details: errorText },
-      { status: 502 },
-    );
-  }
+  let challenge: ParsedChallenge | null = null;
+  let retryFeedback = "";
+  let source: "generated" | "generated-unreviewed" | "curriculum" | "curated" = "generated";
 
-  const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = json.choices?.[0]?.message?.content;
-  if (!content) {
-    return NextResponse.json({ error: "Empty LLM response" }, { status: 502 });
-  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const retryNote = retryFeedback
+      ? `\nFIX THESE QA ISSUES:\n${retryFeedback}\n`
+      : "";
 
-  try {
-    const normalizedContent = content
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/, "");
-    const parsed = JSON.parse(normalizedContent) as Record<string, unknown>;
-
-    const checksRaw = parsed.checks;
-    const checksValid =
-      Array.isArray(checksRaw) &&
-      checksRaw.length >= 1 &&
-      checksRaw.length <= 4 &&
-      checksRaw.every((c) => {
-        if (!c || typeof c !== "object") return false;
-        const row = c as Record<string, unknown>;
-        return (
-          typeof row.id === "string" &&
-          typeof row.assert === "string" &&
-          typeof row.message === "string" &&
-          (row.capture === undefined || typeof row.capture === "string")
-        );
-      });
-
-    if (
-      typeof parsed.id !== "string" ||
-      typeof parsed.topic !== "string" ||
-      typeof parsed.prompt !== "string" ||
-      typeof parsed.starterCode !== "string" ||
-      typeof parsed.hint !== "string" ||
-      !checksValid
-    ) {
-      return NextResponse.json(
-        { error: "Invalid LLM response schema", details: parsed },
-        { status: 502 },
-      );
+    challenge = await requestChallengeFromLlm(apiKey, model, basePrompt + retryNote);
+    if (!challenge) {
+      retryFeedback = "Invalid JSON from generator.";
+      challenge = null;
+      continue;
     }
 
-    return NextResponse.json({
-      id: parsed.id,
-      topic: parsed.topic,
-      prompt: parsed.prompt,
-      starterCode: parsed.starterCode,
-      checks: checksRaw,
-      hint: parsed.hint,
+    const programmaticReason =
+      (promptHasCodeLiterals(challenge.prompt)
+        ? "prompt contains code literals"
+        : null) ?? isWeakCodeChallenge(challenge.prompt, challenge.checks);
+
+    if (programmaticReason) {
+      console.warn("Code challenge failed programmatic QA", {
+        reason: programmaticReason,
+        id: challenge.id,
+        lesson: lesson.id,
+      });
+      retryFeedback = programmaticReason;
+      challenge = null;
+      continue;
+    }
+
+    const review = await reviewCodeChallengeWithLlm(apiKey, reviewModel, {
+      id: challenge.id,
+      topic: challenge.topic,
+      prompt: challenge.prompt,
+      checks: challenge.checks,
+      hint: challenge.hint,
+      targetDifficulty: difficulty,
+      focusTopic: lesson.focus,
+      lessonId: lesson.id,
+      taskGuide: lessonContext,
     });
-  } catch (error) {
-    console.error("Failed to parse code challenge JSON", { content, error });
-    return NextResponse.json({ error: "Could not parse LLM JSON output" }, { status: 502 });
+
+    if (!review) {
+      console.warn("Reviewer skipped; using programmatic QA only", {
+        id: challenge.id,
+        lesson: lesson.id,
+      });
+      source = "generated-unreviewed";
+      break;
+    }
+
+    if (!review.approved) {
+      console.warn("Code challenge rejected by reviewer", {
+        id: challenge.id,
+        lesson: lesson.id,
+        issues: review.issues,
+      });
+      retryFeedback = review.issues.join("; ");
+      challenge = null;
+      continue;
+    }
+
+    if (review.revisedPrompt && review.revisedPrompt !== challenge.prompt) {
+      if (promptHasCodeLiterals(review.revisedPrompt)) {
+        retryFeedback = "Reviewer revised prompt contained code literals.";
+        challenge = null;
+        continue;
+      }
+      challenge = { ...challenge, prompt: normalizePromptDigits(review.revisedPrompt) };
+    }
+
+    challenge = {
+      ...challenge,
+      topic: lesson.focus,
+      prompt: normalizePromptDigits(challenge.prompt),
+    };
+    source = "generated";
+    break;
   }
+
+  if (!challenge) {
+    const curated = pickCuratedCodeChallenge(lesson.focus);
+    return NextResponse.json({
+      ...curated,
+      starterCode: MINIMAL_STARTER_CODE,
+      source: curated.id.startsWith("curriculum-") ? "curriculum" : "curated",
+    });
+  }
+
+  return NextResponse.json({
+    id: challenge.id,
+    topic: challenge.topic,
+    prompt: challenge.prompt,
+    starterCode: MINIMAL_STARTER_CODE,
+    checks: challenge.checks,
+    hint: challenge.hint,
+    source,
+    lessonId: lesson.id,
+  });
 }

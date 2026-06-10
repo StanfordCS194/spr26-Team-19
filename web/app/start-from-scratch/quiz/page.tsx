@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
@@ -92,6 +93,7 @@ type mcqGenerationRequest = {
   difficulty: Difficulty;
   previousTopic?: string;
   focusTopic?: string;
+  seenPrompts?: string[];
 };
 
 // Pyodide coding challenges run after MCQ stage.
@@ -99,25 +101,16 @@ const codingChallenges: CodingChallenge[] = [
   {
     id: "slice-1d",
     prompt:
-      "Create a NumPy array `a = np.array([10, 20, 30, 40, 50])` and set `answer` to the slice that returns [20, 30, 40].",
-    starterCode: `import numpy as np
-
-a = np.array([10, 20, 30, 40, 50])
-# Set answer below
-answer = None`,
+      "Build a one-dimensional array with values 10, 20, 30, 40, and 50. Set `answer` to the three middle elements.",
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["[20, 30, 40]", "array([20, 30, 40])"],
     hint: "Use slicing with start index 1 and end index 4.",
   },
   {
     id: "newaxis-shape",
     prompt:
-      "Create `a = np.arange(6)` and set `answer` to the shape after converting it to a column vector with `np.newaxis`.",
-    starterCode: `import numpy as np
-
-a = np.arange(6)
-col = a[:, np.newaxis]
-# Set answer below
-answer = None`,
+      "Build a one-dimensional array of integers 0 through 5, turn it into a column vector, and set `answer` to that column's shape.",
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["(6, 1)", "(6,1)"],
     hint: "Use `col.shape` for the answer.",
   },
@@ -155,7 +148,7 @@ export default function BasicsQuizPage() {
   const [passedChallengeIds, setPassedChallengeIds] = useState<string[]>([]);
   const [firstTryPassedIds, setFirstTryPassedIds] = useState<string[]>([]);
   const [challengeAttempts, setChallengeAttempts] = useState<Record<string, number>>({});
-  const [codeInput, setCodeInput] = useState(codingChallenges[0].starterCode);
+  const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   // Runtime execution and messaging state for Pyodide code runner.
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
@@ -190,33 +183,33 @@ export default function BasicsQuizPage() {
   //Mistake tracker 
   const [topicMistakes, setTopicMistakes] = useState<Record<string, number>>({});
 
-  function buildAdaptiveGenerationRequest(answerWasCorrect?: boolean): mcqGenerationRequest {
+  function buildAdaptiveGenerationRequest(
+    existingPrompts: Set<string>,
+    answerWasCorrect?: boolean,
+  ): mcqGenerationRequest {
     const projectedMistakes = { ...topicMistakes };
-    
     if (answerWasCorrect === false) {
       projectedMistakes[question.topic] = (projectedMistakes[question.topic] ?? 0) + 1;
     }
     const weakTopic = Object.entries(projectedMistakes).sort((a, b) => b[1] - a[1])[0]?.[0];
-    
     const attemptedCount = index + (answerWasCorrect === undefined ? 0 : 1);
     const projectedScore = mcqScore + (answerWasCorrect ? 1 : 0);
     const projectedAccuracy = attemptedCount === 0 ? 1 : projectedScore / attemptedCount;
 
-
-    let difficulty: Difficulty; // declaration w/ no initial value
-
-    // Stay easy early or when accuracy drops; otherwise allow medium questions.
+    let difficulty: Difficulty;
     if (attemptedCount < 2 || projectedAccuracy < 0.7) {
-    difficulty = "easy";
+      difficulty = "easy";
+    } else if (projectedAccuracy >= 0.85 && attemptedCount >= 3) {
+      difficulty = "hard";
     } else {
-    difficulty = "medium";
+      difficulty = "medium";
     }
 
     return {
-      // Stay easy early or when accuracy drops; otherwise allow medium questions.
       difficulty,
       previousTopic: question.topic,
       focusTopic: weakTopic,
+      seenPrompts: [...existingPrompts],
     };
   }
 
@@ -292,14 +285,13 @@ export default function BasicsQuizPage() {
     }
   }
 
-  async function prefetchBufferedMcq(answerWasCorrect? : boolean) {
-    // Only prefetch during MCQ stage and only when not on terminal MCQ.
+  async function prefetchBufferedMcq(answerWasCorrect?: boolean) {
     if (phase !== "mcq" || isLastQuestion || isPrefetchingMcq) return;
     setIsPrefetchingMcq(true);
     const existingPrompts = new Set(seenPrompts);
     const result = await fetchGeneratedMcq(
       existingPrompts,
-      buildAdaptiveGenerationRequest(answerWasCorrect),
+      buildAdaptiveGenerationRequest(existingPrompts, answerWasCorrect),
     );
     const nextQuestion = result.question;
     setBufferedQuestion(nextQuestion);
@@ -356,7 +348,7 @@ export default function BasicsQuizPage() {
     setPhase("code");
     setSelected(null);
     setCodeIndex(0);
-    setCodeInput(codingChallenges[0].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowHint(false);
@@ -410,7 +402,7 @@ export default function BasicsQuizPage() {
     }
     const nextIndex = codeIndex + 1;
     setCodeIndex(nextIndex);
-    setCodeInput(codingChallenges[nextIndex].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
   }
@@ -431,7 +423,7 @@ export default function BasicsQuizPage() {
     setFirstTryPassedIds([]);
     setChallengeAttempts({});
     setCodeIndex(0);
-    setCodeInput(codingChallenges[0].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowHint(false);
@@ -439,26 +431,54 @@ export default function BasicsQuizPage() {
   }
   const recommendedTopic = getRecommendedTopic();
   const weakTopics = getWeakTopics();
+
+  const totalSteps = TOTAL_MCQ + codingChallenges.length;
+  const completedSteps =
+    phase === "mcq"
+      ? index + (selected !== null ? 1 : 0)
+      : phase === "code"
+        ? TOTAL_MCQ + codeIndex + (runStatus === "pass" ? 1 : 0)
+        : totalSteps;
+  const progressPct = Math.round((completedSteps / totalSteps) * 100);
+
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-gray-50">
       <div className="max-w-2xl w-full bg-white rounded-lg shadow-md p-8">
         <a href="/numpy/lessons" className="text-sm text-blue-600 hover:underline">
-          Back to lessons
+          ← Back to lessons
         </a>
         <h1 className="mt-2 text-2xl font-bold text-gray-900">Basics quiz</h1>
+
+        {/* Unified progress bar */}
+        {phase !== "complete" && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+              <span>
+                {phase === "mcq"
+                  ? `Question ${index + 1} of ${TOTAL_MCQ}`
+                  : `Code challenge ${codeIndex + 1} of ${codingChallenges.length}`}
+              </span>
+              <span className="font-semibold">{progressPct}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-pink-500 to-sky-500 transition-all duration-300"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {phase === "mcq" && (
           <>
-            <p className="mt-2 text-gray-700">
-              MCQ {index + 1} of {TOTAL_MCQ}
-            </p>
-            <p className="mt-1 text-sm text-gray-700">
+            <p className="mt-3 text-xs text-slate-400">
               {isPrefetchingMcq
-                ? "Generating next question in background..."
+                ? "Preparing next question…"
                 : mcqGenerationStatus === "generated"
-                  ? "Next question source: LLM generated"
+                  ? "AI-generated question"
                   : mcqGenerationStatus === "fallback"
-                    ? "Next question source: fallback question"
-                    : "Next question source: waiting for answer"}
+                    ? "Fallback question"
+                    : ""}
             </p>
 
             <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
@@ -601,43 +621,70 @@ export default function BasicsQuizPage() {
 
         {phase === "complete" && (
           <div className="mt-6">
-            <h2 className="text-xl font-semibold text-gray-900">Quiz complete</h2>
-            <p className="mt-2 text-gray-800">
-              MCQ score: {mcqScore} / {TOTAL_MCQ}
-            </p>
-            <p className="mt-1 text-gray-800">
-              Code score (first try): {codeScore} / {codingChallenges.length}
-            </p>
-            <p className="mt-1 font-semibold text-gray-900">
-              Total score: {totalScore} / {TOTAL_MCQ + codingChallenges.length}
-            </p>
+            {/* Completion banner */}
+            <div className="rounded-2xl bg-gradient-to-br from-pink-50 to-sky-50 border border-pink-200 p-6 text-center">
+              <p className="text-4xl">🎉</p>
+              <h2 className="mt-2 text-xl font-black text-slate-900">Basics quiz complete!</h2>
+              <p className="mt-1 text-sm text-slate-600">Here&apos;s how you did.</p>
+            </div>
+
+            {/* Score summary */}
+            <dl className="mt-4 grid grid-cols-3 gap-3">
+              {[
+                { label: "MCQ", value: `${mcqScore} / ${TOTAL_MCQ}` },
+                { label: "Code (1st try)", value: `${codeScore} / ${codingChallenges.length}` },
+                { label: "Total", value: `${totalScore} / ${TOTAL_MCQ + codingChallenges.length}` },
+              ].map((s) => (
+                <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
+                  <dt className="text-xs font-medium text-slate-500">{s.label}</dt>
+                  <dd className="mt-0.5 text-lg font-bold text-slate-900">{s.value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {/* Weak topics */}
             {weakTopics.length > 0 ? (
-              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-4">
-                <p className="font-semibold text-gray-900">Topics to review</p>
-                <ul className="mt-2 list-disc list-inside text-gray-800">
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="font-semibold text-slate-900">Topics to review</p>
+                <ul className="mt-2 list-disc list-inside text-slate-800 text-sm">
                   {weakTopics.map((topic) => (
                     <li key={topic}>{topic}</li>
                   ))}
                 </ul>
-                <p className="mt-3 text-gray-900">
-                  Recommended next topic: <strong>{recommendedTopic}</strong>
-                </p>
+                {recommendedTopic && (
+                  <p className="mt-3 text-sm text-slate-900">
+                    Start with: <strong>{recommendedTopic}</strong>
+                  </p>
+                )}
               </div>
             ) : (
-              <div className="mt-4 rounded-md border border-green-200 bg-green-50 p-4">
-                <p className="font-semibold text-gray-900">Great job!</p>
-                <p className="mt-1 text-gray-800">
-                  You did not show a clear weak area in this quiz.
-                </p>
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="font-semibold text-slate-900">No clear weak spot — great work!</p>
               </div>
             )}
 
-            <button
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              onClick={handleRestart}
-            >
-              Retake full quiz
-            </button>
+            {/* Forward navigation */}
+            <div className="mt-6 flex flex-wrap gap-3">
+              <a
+                href={`/numpy/path${recommendedTopic ? `?level=Beginner` : ""}`}
+                className="rounded-xl bg-gradient-to-r from-pink-500 to-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:shadow-md transition"
+              >
+                See my learning path →
+              </a>
+              <a
+                href="/numpy/lessons"
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Go to lessons
+              </a>
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm text-slate-500 hover:bg-slate-50 transition"
+                onClick={handleRestart}
+              >
+                Retake quiz
+              </button>
+            </div>
           </div>
         )}
       </div>

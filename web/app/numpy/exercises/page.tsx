@@ -4,14 +4,35 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
+import { XPToast } from "@/components/xp-toast";
+import {
+  awardXPWithResult,
+  XP_AWARD,
+  getTierForXP,
+  getXPProgressInTier,
+  getNextTier,
+  getXPSnapshot,
+  getXPServerSnapshot,
+  subscribeXP,
+} from "@/lib/xp-store";
 import { PythonCodeEditor } from "@/components/python-code";
 import {
   EXERCISE_ZONE_CODE_LAB,
   EXERCISE_ZONE_MCQ_DRILL,
-  loadNumpyExerciseProgress,
   recordExerciseResult,
   summarizeExerciseProgress,
 } from "@/lib/numpy-exercise-progress";
+import {
+  getProgressServerSnapshot,
+  getProgressSnapshot,
+  notifyProgressChange,
+  subscribeProgress,
+} from "@/lib/numpy-progress-store";
+import {
+  difficultyFromSession,
+  pickFocusTopic,
+  type DrillDifficulty,
+} from "@/lib/exercise-adaptive";
 import { runAndValidateChallenge, type CodeChallengeCheck } from "@/lib/numpy-code-validate";
 import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { loadNumpyPlacement, type NumpyPlacementPayload } from "@/lib/numpy-placement-storage";
@@ -23,6 +44,10 @@ import {
   subscribeSavedProblems,
   toggleSavedProblem,
 } from "@/lib/numpy-saved-problems";
+import { pickCuratedCodeChallenge } from "@/lib/numpy-code-challenge-quality";
+import { pickRotatingCodeLesson } from "@/lib/numpy-code-topics";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
+import { pickFallbackMcq } from "@/lib/numpy-mcq-bank";
 
 type DrillMcq = {
   topic: string;
@@ -43,41 +68,37 @@ type CodeChallenge = {
   hint: string;
 };
 
-const FALLBACK_MCQ: DrillMcq = {
-  topic: "indexing",
-  prompt: "In NumPy, what does `arr[0]` return for a 1D array?",
-  choices: ["The last element", "The first element", "A copy of the array", "The dtype only"],
-  correctIndex: 1,
-  explanation: "Index 0 selects the first element in a 0-based array.",
-  hint: "Python and NumPy use 0-based indexing.",
-};
-
-const FALLBACK_CODE: CodeChallenge = {
-  id: "slice-1d-fallback",
-  topic: "slicing",
-  prompt:
-    "Create `a = np.array([10, 20, 30, 40, 50])` and set `answer` to the slice that returns [20, 30, 40].",
-  starterCode: `import numpy as np
-
-a = np.array([10, 20, 30, 40, 50])
-answer = None`,
-  expectedOutputs: ["[20, 30, 40]", "array([20, 30, 40])"],
-  hint: "Use slicing with start index 1 and end index 4.",
-};
+/** Topics a user can manually select in the topic picker. */
+const DRILL_TOPICS = [
+  "NumPy arrays and indexing",
+  "Array slicing",
+  "Array shapes and reshaping",
+  "Boolean indexing",
+  "Array creation (zeros, ones, arange)",
+  "Array math and operations",
+  "Aggregation (sum, mean, min, max)",
+  "Broadcasting",
+  "Sorting and editing",
+  "Transpose and flatten",
+  "Matrices and dot product",
+  "Random number generation",
+] as const;
 
 function NumpyExercisesContent() {
   const searchParams = useSearchParams();
   const [placement, setPlacement] = useState<NumpyPlacementPayload | null>(null);
-  const [tab, setTab] = useState<"mcq" | "code">("mcq");
-  const [progressTick, setProgressTick] = useState(0);
+  const [tab, setTab] = useState<"mcq" | "code">("code");
+  /** When set, overrides the placement-derived focus topic with the user's pick. */
+  const [topicOverride, setTopicOverride] = useState<string | null>(null);
 
   const focusHint = useMemo(() => {
+    if (topicOverride) return topicOverride;
     const q = searchParams.get("focus")?.trim();
     if (q) return q;
     if (placement?.recommendedTopic) return placement.recommendedTopic;
     if (placement?.weakTopics?.length) return placement.weakTopics[0]!;
     return "NumPy arrays and indexing";
-  }, [placement, searchParams]);
+  }, [placement, searchParams, topicOverride]);
 
   const topicProgressKey = useMemo(() => slugifyTopic(focusHint), [focusHint]);
 
@@ -85,16 +106,26 @@ function NumpyExercisesContent() {
     setPlacement(loadNumpyPlacement());
     const t = searchParams.get("tab");
     if (t === "code" || searchParams.get("saved")) setTab("code");
+    if (t === "mcq") setTab("mcq");
   }, [searchParams]);
 
-  const summary = useMemo(() => {
-    void progressTick;
-    return summarizeExerciseProgress(loadNumpyExerciseProgress());
-  }, [progressTick]);
+  const progress = useSyncExternalStore(
+    subscribeProgress,
+    getProgressSnapshot,
+    getProgressServerSnapshot,
+  );
+  const summary = useMemo(() => summarizeExerciseProgress(progress), [progress]);
 
-  const bumpProgress = useCallback(() => {
-    setProgressTick((n) => n + 1);
-  }, []);
+  /* —— Session adaptivity (mistakes → next question/challenge) —— */
+  const [topicMistakes, setTopicMistakes] = useState<Record<string, number>>({});
+  const [mcqSessionCorrect, setMcqSessionCorrect] = useState(0);
+  const [mcqSessionAttempted, setMcqSessionAttempted] = useState(0);
+  const [codeSessionCorrect, setCodeSessionCorrect] = useState(0);
+  const [codeSessionAttempted, setCodeSessionAttempted] = useState(0);
+  const [drillDifficulty, setDrillDifficulty] = useState<DrillDifficulty>("easy");
+  const reinforceTopicRef = useRef<string | null>(null);
+  const codeRotationRef = useRef(0);
+  const seenCodeLessonIdsRef = useRef<string[]>([]);
 
   /* —— MCQ drill —— */
   const [mcq, setMcq] = useState<DrillMcq | null>(null);
@@ -102,19 +133,30 @@ function NumpyExercisesContent() {
   const [mcqError, setMcqError] = useState<string | null>(null);
   const [prevTopic, setPrevTopic] = useState<string | undefined>(undefined);
   const [mcqSelected, setMcqSelected] = useState<number | null>(null);
+  const [seenMcqPrompts, setSeenMcqPrompts] = useState<string[]>([]);
+  const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+
+  const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
+  const tier = getTierForXP(xpRecord.total);
+  const nextTier = getNextTier(xpRecord.total);
+  const xpProgress = getXPProgressInTier(xpRecord.total);
 
   const loadMcq = useCallback(async () => {
     setMcqLoading(true);
     setMcqError(null);
     setMcqSelected(null);
+    const difficulty = difficultyFromSession(mcqSessionAttempted, mcqSessionCorrect);
+    const focusTopic = pickFocusTopic(topicMistakes, focusHint);
+    setDrillDifficulty(difficulty);
     try {
       const res = await fetch("/api/generate-question", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          difficulty: "medium",
-          focusTopic: focusHint,
+          difficulty,
+          focusTopic,
           previousTopic: prevTopic,
+          seenPrompts: seenMcqPrompts,
         }),
       });
       if (!res.ok) throw new Error("Request failed");
@@ -129,21 +171,38 @@ function NumpyExercisesContent() {
       ) {
         throw new Error("Bad shape");
       }
-      setMcq({
+      const newMcq: DrillMcq = {
         topic: typeof data.topic === "string" ? data.topic : "general",
         prompt: data.prompt as string,
         choices: data.choices as string[],
         correctIndex: data.correctIndex as number,
         explanation: typeof data.explanation === "string" ? data.explanation : "",
         hint: typeof data.hint === "string" ? data.hint : undefined,
-      });
+      };
+      setMcq(newMcq);
+      setSeenMcqPrompts((prev) =>
+        prev.includes(newMcq.prompt) ? prev : [...prev, newMcq.prompt],
+      );
     } catch {
-      setMcq(FALLBACK_MCQ);
+      // Rotate through the local bank (preferring unseen prompts) instead of
+      // repeating one hard-coded question every time generation fails.
+      const fallback = pickFallbackMcq(seenMcqPrompts);
+      setMcq(fallback);
+      setSeenMcqPrompts((prev) =>
+        prev.includes(fallback.prompt) ? prev : [...prev, fallback.prompt],
+      );
       setMcqError("Using fallback question (API unavailable or invalid response).");
     } finally {
       setMcqLoading(false);
     }
-  }, [focusHint, prevTopic]);
+  }, [
+    focusHint,
+    prevTopic,
+    seenMcqPrompts,
+    topicMistakes,
+    mcqSessionAttempted,
+    mcqSessionCorrect,
+  ]);
 
   useEffect(() => {
     if (tab === "mcq" && !mcq && !mcqLoading) void loadMcq();
@@ -153,8 +212,22 @@ function NumpyExercisesContent() {
     if (mcqSelected !== null || !mcq) return;
     setMcqSelected(idx);
     const ok = idx === mcq.correctIndex;
+    setMcqSessionAttempted((n) => n + 1);
+    if (ok) {
+      setMcqSessionCorrect((n) => n + 1);
+      const result = awardXPWithResult("mcq_correct");
+      setXpToast({
+        amount: XP_AWARD.mcq_correct,
+        ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
+      });
+    } else {
+      setTopicMistakes((prev) => ({
+        ...prev,
+        [mcq.topic]: (prev[mcq.topic] ?? 0) + 1,
+      }));
+    }
     recordExerciseResult(EXERCISE_ZONE_MCQ_DRILL, ok, { topicKey: topicProgressKey });
-    bumpProgress();
+    notifyProgressChange();
     setPrevTopic(mcq.topic);
   }
 
@@ -165,6 +238,9 @@ function NumpyExercisesContent() {
   /* —— Code lab —— */
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
+  const codeAttemptRef = useRef(0);
+  /** XP / progress for the current challenge are granted at most once. */
+  const codeRewardClaimedRef = useRef(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
   /** Saved (bookmarked) problems for the current account. */
@@ -176,6 +252,8 @@ function NumpyExercisesContent() {
   const isCurrentSaved = !!challenge && savedProblems.some((p) => p.id === challenge.id);
   /** Open at most one saved problem from a ?saved=<id> deep link. */
   const openedSavedRef = useRef(false);
+  const [seenCodePrompts, setSeenCodePrompts] = useState<string[]>([]);
+  const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
   const [pyodideLoading, setPyodideLoading] = useState(true);
@@ -206,11 +284,36 @@ function NumpyExercisesContent() {
     setCodeError(null);
     setRunStatus("idle");
     setRunMessage("");
+    const reinforceWeakTopic = reinforceTopicRef.current;
+    reinforceTopicRef.current = null;
+    const difficulty = reinforceWeakTopic
+      ? "easy"
+      : difficultyFromSession(codeSessionAttempted, codeSessionCorrect);
+    const lesson = pickRotatingCodeLesson({
+      placementRecommended: placement?.recommendedTopic ?? null,
+      placementWeak: placement?.weakTopics,
+      urlFocus: searchParams.get("focus") ?? undefined,
+      reinforceTopic: reinforceWeakTopic,
+      recentLessonIds: seenCodeLessonIdsRef.current,
+      rotationIndex: codeRotationRef.current,
+    });
+    codeRotationRef.current += 1;
+    seenCodeLessonIdsRef.current = [
+      ...seenCodeLessonIdsRef.current.slice(-8),
+      lesson.id,
+    ];
+    setDrillDifficulty(difficulty);
     try {
       const res = await fetch("/api/generate-code-challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ difficulty: "medium", focusTopic: focusHint }),
+        body: JSON.stringify({
+          difficulty,
+          lessonId: lesson.id,
+          focusTopic: lesson.focus,
+          reinforceWeakTopic: reinforceWeakTopic ?? undefined,
+          seenPrompts: seenCodePrompts,
+        }),
       });
       if (!res.ok) throw new Error("bad");
       const data = (await res.json()) as Record<string, unknown>;
@@ -225,23 +328,44 @@ function NumpyExercisesContent() {
         id: data.id,
         topic: typeof data.topic === "string" ? data.topic : "general",
         prompt: data.prompt,
-        starterCode: data.starterCode,
+        starterCode: MINIMAL_STARTER_CODE,
         expectedOutputs: Array.isArray(data.expectedOutputs)
           ? (data.expectedOutputs as string[])
           : undefined,
         checks: Array.isArray(data.checks) ? (data.checks as CodeChallengeCheck[]) : undefined,
         hint: typeof data.hint === "string" ? data.hint : "",
       };
+      codeAttemptRef.current = 0;
+      codeRewardClaimedRef.current = false;
       setChallenge(ch);
-      setCodeInput(ch.starterCode);
+      setCodeInput(MINIMAL_STARTER_CODE);
+      setSeenCodePrompts((prev) =>
+        prev.includes(ch.prompt) ? prev : [...prev, ch.prompt],
+      );
     } catch {
-      setChallenge(FALLBACK_CODE);
-      setCodeInput(FALLBACK_CODE.starterCode);
-      setCodeError("Using fallback challenge (API unavailable or invalid response).");
+      const fallback = pickCuratedCodeChallenge(lesson.focus);
+      codeAttemptRef.current = 0;
+      codeRewardClaimedRef.current = false;
+      setChallenge({
+        id: fallback.id,
+        topic: fallback.topic,
+        prompt: fallback.prompt,
+        starterCode: MINIMAL_STARTER_CODE,
+        checks: fallback.checks,
+        hint: fallback.hint,
+      });
+      setCodeInput(MINIMAL_STARTER_CODE);
+      setCodeError("Using curated challenge (API unavailable or invalid response).");
     } finally {
       setCodeLoading(false);
     }
-  }, [focusHint]);
+  }, [
+    placement,
+    searchParams,
+    seenCodePrompts,
+    codeSessionAttempted,
+    codeSessionCorrect,
+  ]);
 
   const openSavedProblem = useCallback((id: string): boolean => {
     const saved = findSavedProblem(id);
@@ -290,76 +414,168 @@ function NumpyExercisesContent() {
     if (!canRun || !challenge) return;
     setRunStatus("running");
     setRunMessage("Running…");
+    const attemptNum = codeAttemptRef.current;
+    codeAttemptRef.current += 1;
     try {
       const outcome = await runAndValidateChallenge(codeInput, {
         expectedOutputs: challenge.expectedOutputs,
         checks: challenge.checks,
       });
       setRunStatus(outcome.passed ? "pass" : "fail");
-      setRunMessage(outcome.message);
-      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, outcome.passed, {
-        topicKey: topicProgressKey,
-      });
-      bumpProgress();
+      setRunMessage(
+        outcome.passed && codeRewardClaimedRef.current
+          ? `${outcome.message} (already passed — no extra XP)`
+          : outcome.message,
+      );
+
+      if (!codeRewardClaimedRef.current) {
+        setCodeSessionAttempted((n) => n + 1);
+        if (outcome.passed) {
+          codeRewardClaimedRef.current = true;
+          setCodeSessionCorrect((n) => n + 1);
+          if (attemptNum === 0) reinforceTopicRef.current = null;
+          const eventType = attemptNum === 0 ? "code_first_try" : "code_pass";
+          const result = awardXPWithResult(eventType);
+          setXpToast({
+            amount: XP_AWARD[eventType],
+            ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
+          });
+          recordExerciseResult(EXERCISE_ZONE_CODE_LAB, true, {
+            topicKey: topicProgressKey,
+          });
+          notifyProgressChange();
+        } else if (attemptNum === 0 && challenge) {
+          setTopicMistakes((prev) => ({
+            ...prev,
+            [challenge.topic]: (prev[challenge.topic] ?? 0) + 1,
+          }));
+          reinforceTopicRef.current = challenge.topic;
+          recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, {
+            topicKey: topicProgressKey,
+          });
+          notifyProgressChange();
+        }
+      }
     } catch (e) {
       setRunStatus("fail");
       setRunMessage(e instanceof Error ? e.message : "Run failed");
-      recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, { topicKey: topicProgressKey });
-      bumpProgress();
+      if (!codeRewardClaimedRef.current && attemptNum === 0) {
+        recordExerciseResult(EXERCISE_ZONE_CODE_LAB, false, { topicKey: topicProgressKey });
+        notifyProgressChange();
+      }
     }
   }
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
       <div className="mx-auto max-w-3xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/numpy/path" className="text-sm text-sky-700 hover:underline">
             ← Back to path
           </Link>
-          <p className="text-xs text-slate-500">
-            Focus: <strong>{focusHint}</strong>
-          </p>
-        </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <ExerciseProgressRing percent={summary.overallPercent} />
-          <div className="text-sm text-slate-600">
-            <p>
-              Attempts: <strong>{summary.totalAttempted}</strong>
-            </p>
-            <p>
-              Correct: <strong>{summary.totalCorrect}</strong>
-            </p>
+          {/* Topic picker — lets users override placement-derived focus */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="topic-picker" className="text-xs font-medium text-slate-500 shrink-0">
+              Focus topic:
+            </label>
+            <select
+              id="topic-picker"
+              value={topicOverride ?? focusHint}
+              onChange={(e) => {
+                setTopicOverride(e.target.value);
+                // Reset current questions so the new topic loads immediately.
+                setMcq(null);
+                setChallenge(null);
+                setMcqSelected(null);
+                setRunStatus("idle");
+                setRunMessage("");
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            >
+              {DRILL_TOPICS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {topicOverride && (
+              <button
+                type="button"
+                onClick={() => { setTopicOverride(null); setMcq(null); setChallenge(null); }}
+                className="text-xs text-slate-400 hover:text-slate-600"
+                title="Reset to placement-recommended topic"
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="mt-6 flex gap-2 border-b border-slate-200 pb-2">
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <ExerciseProgressRing percent={summary.overallPercent} />
+            <div className="flex flex-col items-end gap-1.5">
+              {/* Tier badge */}
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{tier.icon}</span>
+                <div className="text-right">
+                  <p className={`text-xs font-semibold uppercase tracking-widest ${tier.colorClass}`}>{tier.name}</p>
+                  <p className="text-lg font-black text-slate-900">{xpRecord.total} XP</p>
+                </div>
+              </div>
+              {/* XP progress bar to next tier */}
+              {nextTier && (
+                <div className="w-40">
+                  <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                    <span>{xpProgress.xpInTier} / {xpProgress.tierSize} XP</span>
+                    <span>{nextTier.name} {nextTier.icon}</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="adapted-xp-shimmer h-full rounded-full transition-all duration-500"
+                      style={{ width: `${xpProgress.pct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-slate-400">
+                {summary.totalAttempted} attempts · {summary.totalCorrect} correct
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center gap-2 border-b border-slate-200 pb-2">
           <button
             type="button"
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === "mcq" ? "bg-sky-600 text-white" : "text-slate-700 hover:bg-slate-100"
-            }`}
-            onClick={() => setTab("mcq")}
-          >
-            MCQ drill
-          </button>
-          <button
-            type="button"
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
               tab === "code" ? "bg-sky-600 text-white" : "text-slate-700 hover:bg-slate-100"
             }`}
             onClick={() => setTab("code")}
           >
             Code lab
           </button>
+          <button
+            type="button"
+            className={`rounded-lg px-3 py-2 text-sm font-medium ${
+              tab === "mcq" ? "bg-slate-700 text-white" : "text-slate-500 hover:bg-slate-100"
+            }`}
+            onClick={() => setTab("mcq")}
+          >
+            Quick concept check
+          </button>
         </div>
 
         {tab === "mcq" && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Adaptive MCQs</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">Adaptive MCQs</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                {drillDifficulty}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-slate-600">
-              Each answer updates your stored accuracy. Next loads another AI question when the API
-              is available.
+              Miss a topic and the next question targets your weak areas; difficulty shifts with
+              your session accuracy.
             </p>
             {mcqError && <p className="mt-2 text-sm text-amber-700">{mcqError}</p>}
             {mcqLoading && <p className="mt-4 text-slate-600">Loading question…</p>}
@@ -407,10 +623,15 @@ function NumpyExercisesContent() {
 
         {tab === "code" && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Structured code tasks</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">Structured code tasks</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                {drillDifficulty}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-slate-600">
-              Set <code className="rounded bg-slate-100 px-1">answer</code>; your code runs in Python
-              and is checked with assertions in that environment. Graded runs update your progress.
+              Fail a challenge and the next one reinforces that topic at an easier level. Set{" "}
+              <code className="rounded bg-slate-100 px-1">answer</code> and run real Python.
             </p>
             {codeError && <p className="mt-2 text-sm text-amber-700">{codeError}</p>}
             {pyodideLoading && <p className="mt-2 text-sm text-amber-800">Loading Python…</p>}
@@ -471,6 +692,11 @@ function NumpyExercisesContent() {
           </section>
         )}
       </div>
+      <XPToast
+        amount={xpToast?.amount ?? null}
+        levelUpTier={xpToast?.levelUpTier}
+        onDone={() => setXpToast(null)}
+      />
     </main>
   );
 }

@@ -1,10 +1,13 @@
 import {
   checkAnswerSet,
   checkArrayEqual,
+  checkDerivedAnswer,
   checkScalar,
   checkShape,
-  checkShapeTuple,
+  checkSourceArray,
+  type CodeChallengeCheck,
 } from "@/lib/numpy-code-validate";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 /**
  * NumPy curriculum modeled on the official "absolute beginners" guide.
@@ -22,8 +25,8 @@ export type LessonPlayground = "index-slice" | "matrix" | "custom-array";
 /** A runnable, output-checked exercise (executed in Pyodide). */
 export type LessonPractice = {
   prompt: string;
-  /** Must import numpy and initialize `answer`. */
-  starterCode: string;
+  /** Legacy field; editor always uses {@link MINIMAL_STARTER_CODE}. */
+  starterCode?: string;
   /**
    * Legacy accepted repr(answer) variants (graded in Python via env checks).
    * Omit when `checks` is provided.
@@ -91,8 +94,9 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         example: "a = np.array([[1, 2, 3],\n              [4, 5, 6]])",
         playground: "custom-array",
         practice: {
-          prompt: "Build the 2x3 array [[1, 2, 3], [4, 5, 6]] and store it in `answer`.",
-          starterCode: "import numpy as np\n\n# Make a 2x3 array\nanswer = None",
+          prompt:
+            "Build a 2×3 array whose first row is 1, 2, 3 and second row is 4, 5, 6. Store it in `answer`.",
+          starterCode: MINIMAL_STARTER_CODE,
           checks: [
             checkAnswerSet(),
             checkShape([2, 3]),
@@ -120,9 +124,14 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         example: "a = np.array([1, 2, 3, 4])\na[0]       # 1\na[0] = 10",
         playground: "index-slice",
         practice: {
-          prompt: "Set `answer` to the first element of `a`.",
-          starterCode: "import numpy as np\n\na = np.array([10, 20, 30, 40])\nanswer = None",
-          checks: [checkAnswerSet(), checkScalar(10)],
+          prompt:
+            "Build a one-dimensional array with values 10, 20, 30, and 40. Set `answer` to its first element.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkSourceArray("a", [10, 20, 30, 40]),
+            checkDerivedAnswer("from-index", "np.asarray(answer).item() == a[0]", "Index into `a`."),
+          ],
           hint: "Arrays are zero-indexed: use a[0].",
         },
       },
@@ -134,10 +143,17 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           "Inspect an array with .ndim (dimensions), .shape (size per axis), .size (total elements), and .dtype (type).",
         example: "a = np.array([[1, 2, 3], [4, 5, 6]])\na.ndim    # 2\na.shape   # (2, 3)\na.size    # 6",
         practice: {
-          prompt: "Set `answer` to the shape of `a`.",
-          starterCode:
-            "import numpy as np\n\na = np.array([[1, 2, 3], [4, 5, 6]])\nanswer = None",
-          checks: [checkAnswerSet(), checkShapeTuple([2, 3])],
+          prompt:
+            "Build a 2×3 array whose rows are 1, 2, 3 and 4, 5, 6. Set `answer` to that array's shape.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkSourceArray("a", [
+              [1, 2, 3],
+              [4, 5, 6],
+            ]),
+            checkDerivedAnswer("from-shape", "answer == a.shape", "Read `a.shape` — don't type (2, 3) yourself."),
+          ],
           hint: "Use the .shape attribute (no parentheses).",
         },
       },
@@ -150,9 +166,19 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         example: "np.zeros(3)\nnp.ones((2, 2))\nnp.arange(0, 10, 2)\nnp.linspace(0, 1, 5)",
         playground: "custom-array",
         practice: {
-          prompt: "Use np.arange to build the array [2, 4, 6, 8] and store it in `answer`.",
-          starterCode: "import numpy as np\n\nanswer = None",
-          checks: [checkAnswerSet(), checkArrayEqual([2, 4, 6, 8])],
+          prompt:
+            "Use arange to build the even integers from 2 through 8 and store them in `answer`.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkArrayEqual([2, 4, 6, 8]),
+            checkDerivedAnswer(
+              "from-arange",
+              "np.array_equal(answer, np.arange(2, 10, 2))",
+              "Build the sequence with np.arange.",
+              "array_construction",
+            ),
+          ],
           hint: "np.arange(start, stop, step) stops before `stop`.",
         },
       },
@@ -218,18 +244,18 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           "reshape returns a new view with a different shape. The total number of elements must stay the same.",
         example: "a = np.arange(6)\na.reshape(2, 3)",
         practice: {
-          prompt: "Reshape np.arange(6) into a 3x2 array stored in `answer`.",
-          starterCode: "import numpy as np\n\nanswer = None",
+          prompt:
+            "Build an array of integers 0 through 5, then set `answer` to a 3×2 reshape of it.",
+          starterCode: MINIMAL_STARTER_CODE,
           checks: [
             checkAnswerSet(),
-            checkShape([3, 2]),
-            {
-              id: "reshape-values",
-              assert: "np.array_equal(answer, np.arange(6).reshape(3, 2))",
-              message: "Reshape np.arange(6) into a 3×2 array.",
-              capture: "answer",
-              skill: "shapes",
-            },
+            checkSourceArray("a", [0, 1, 2, 3, 4, 5]),
+            checkDerivedAnswer(
+              "reshape-a",
+              "np.array_equal(answer, a.reshape(3, 2))",
+              "Reshape `a` — don't paste a literal 3×2 grid.",
+              "shapes",
+            ),
           ],
           hint: "Chain it: np.arange(6).reshape(3, 2).",
         },
@@ -242,12 +268,18 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           "Add a dimension with np.newaxis or np.expand_dims to turn a 1D vector into a row or column.",
         example: "a = np.array([1, 2, 3])\na[np.newaxis, :]   # shape (1, 3)\na[:, np.newaxis]   # shape (3, 1)",
         practice: {
-          prompt: "Turn `a` into a column vector of shape (3, 1) stored in `answer`.",
-          starterCode: "import numpy as np\n\na = np.array([1, 2, 3])\nanswer = None",
+          prompt:
+            "Start with a one-dimensional array containing 1, 2, and 3. Set `answer` to its column-vector form with shape (3, 1).",
+          starterCode: MINIMAL_STARTER_CODE,
           checks: [
             checkAnswerSet(),
-            checkShape([3, 1]),
-            checkArrayEqual([[1], [2], [3]]),
+            checkSourceArray("a", [1, 2, 3]),
+            checkDerivedAnswer(
+              "column-from-a",
+              "np.array_equal(answer, a[:, np.newaxis])",
+              "Derive the column from `a` with np.newaxis.",
+              "shapes",
+            ),
           ],
           hint: "Add the new axis in the second slot: a[:, np.newaxis].",
         },
@@ -284,9 +316,19 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         example: "a = np.array([1, 2, 3, 4, 5])\na[1:4]      # [2 3 4]\na[a > 2]    # [3 4 5]",
         playground: "index-slice",
         practice: {
-          prompt: "Set `answer` to the last two elements of `a` using a slice.",
-          starterCode: "import numpy as np\n\na = np.array([10, 20, 30, 40, 50])\nanswer = None",
-          checks: [checkAnswerSet(), checkArrayEqual([40, 50])],
+          prompt:
+            "Build a one-dimensional array with values 10, 20, 30, 40, and 50. Set `answer` to its last two elements using a slice.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkSourceArray("a", [10, 20, 30, 40, 50]),
+            checkDerivedAnswer(
+              "slice-tail",
+              "np.array_equal(answer, a[-2:])",
+              "Slice `a` — don't hard-code [40, 50].",
+              "indexing",
+            ),
+          ],
           hint: "Negative indices count from the end: a[-2:].",
         },
       },
@@ -298,9 +340,14 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
           "Arithmetic is elementwise; reductions like sum, min, and max work over the whole array or an axis.",
         example: "a = np.array([1, 2, 3])\nb = np.array([4, 5, 6])\na + b      # [5 7 9]\na.sum()    # 6",
         practice: {
-          prompt: "Set `answer` to the sum of all values in `x`.",
-          starterCode: "import numpy as np\n\nx = np.array([1, 2, 3, 4])\nanswer = None",
-          checks: [checkAnswerSet(), checkScalar(10)],
+          prompt:
+            "Build a one-dimensional array with values 1, 2, 3, and 4. Set `answer` to the sum of all its values.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkSourceArray("x", [1, 2, 3, 4]),
+            checkDerivedAnswer("sum-x", "answer == x.sum()", "Sum `x` — don't hard-code 10."),
+          ],
           hint: "Use x.sum() or np.sum(x).",
         },
       },
@@ -344,10 +391,22 @@ export const NUMPY_CURRICULUM: CurriculumUnit[] = [
         example: "m = np.array([[1, 2], [3, 4], [5, 6]])\nm[1, 0]   # 3\nm[:, 0]   # column 0",
         playground: "matrix",
         practice: {
-          prompt: "Set `answer` to the element at row 1, column 0 of matrix `m`.",
-          starterCode:
-            "import numpy as np\n\nm = np.array([[1, 2], [3, 4], [5, 6]])\nanswer = None",
-          checks: [checkAnswerSet(), checkScalar(3)],
+          prompt:
+            "Build a 3×2 matrix with rows 1, 2 then 3, 4 then 5, 6. Set `answer` to the element at row 1, column 0.",
+          starterCode: MINIMAL_STARTER_CODE,
+          checks: [
+            checkAnswerSet(),
+            checkSourceArray("m", [
+              [1, 2],
+              [3, 4],
+              [5, 6],
+            ]),
+            checkDerivedAnswer(
+              "index-m",
+              "np.asarray(answer).item() == m[1, 0]",
+              "Index into `m` — don't hard-code 3.",
+            ),
+          ],
           hint: "Index with [row, col]: m[1, 0].",
         },
       },
