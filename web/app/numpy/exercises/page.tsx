@@ -242,7 +242,6 @@ function NumpyExercisesContent() {
   /** XP / progress for the current challenge are granted at most once. */
   const codeRewardClaimedRef = useRef(false);
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
   /** Saved (bookmarked) problems for the current account. */
   const savedProblems = useSyncExternalStore(
     subscribeSavedProblems,
@@ -374,7 +373,7 @@ function NumpyExercisesContent() {
       id: saved.id,
       topic: saved.topic,
       prompt: saved.prompt,
-      starterCode: saved.starterCode ?? FALLBACK_CODE.starterCode,
+      starterCode: saved.starterCode ?? MINIMAL_STARTER_CODE,
       expectedOutputs: saved.expectedOutputs,
       checks: saved.checks,
       hint: saved.hint,
