@@ -339,10 +339,93 @@ function NumpyExercisesContent() {
         recentLessonIds: seenCodeLessonIdsRef.current,
         rotationIndex: codeRotationRef.current,
       });
-      setCodeInput(MINIMAL_STARTER_CODE);
-      setCodeError(null);
-    } finally {
-      setCodeLoading(false);
+      codeRotationRef.current += 1;
+      seenCodeLessonIdsRef.current = [...seenCodeLessonIdsRef.current.slice(-8), lesson.id];
+      return lesson;
+    },
+    [placement, searchParams],
+  );
+
+  const fetchGeneratedChallenge = useCallback(
+    async (
+      lessonId: string,
+      focus: string,
+      difficulty: DrillDifficulty,
+      reinforceTopic: string | null,
+    ): Promise<CodeChallenge | null> => {
+      try {
+        const res = await fetch("/api/generate-code-challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            difficulty,
+            lessonId,
+            focusTopic: focus,
+            reinforceWeakTopic: reinforceTopic ?? undefined,
+            seenPrompts: seenCodePromptsRef.current,
+          }),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as Record<string, unknown>;
+        return buildChallengeFromData(data);
+      } catch {
+        return null;
+      }
+    },
+    [buildChallengeFromData],
+  );
+
+  const curatedToChallenge = useCallback((focus: string): CodeChallenge => {
+    const fb = pickCuratedCodeChallenge(focus);
+    return {
+      id: fb.id,
+      topic: fb.topic,
+      prompt: fb.prompt,
+      starterCode: MINIMAL_STARTER_CODE,
+      checks: fb.checks,
+      hint: fb.hint,
+    };
+  }, []);
+
+  const applyChallenge = useCallback((ch: CodeChallenge, difficulty: DrillDifficulty) => {
+    codeAttemptRef.current = 0;
+    codeRewardClaimedRef.current = false;
+    setDrillDifficulty(difficulty);
+    setChallenge(ch);
+    setCodeInput(MINIMAL_STARTER_CODE);
+    setRunStatus("idle");
+    setRunMessage("");
+    setCodeError(null);
+    setCodeLoading(false);
+    setSeenCodePrompts((prev) => (prev.includes(ch.prompt) ? prev : [...prev, ch.prompt]));
+  }, []);
+
+  // Generate the *next* challenge in the background so "New challenge" is instant.
+  const startCodePrefetch = useCallback(() => {
+    if (prefetchInFlightRef.current || prefetchedChallengeRef.current) return;
+    prefetchInFlightRef.current = true;
+    const difficulty = difficultyFromSession(codeSessionAttempted, codeSessionCorrect);
+    const lesson = pickNextCodeLesson(null);
+    void fetchGeneratedChallenge(lesson.id, lesson.focus, difficulty, null).then((ch) => {
+      prefetchedChallengeRef.current = ch;
+      prefetchInFlightRef.current = false;
+    });
+  }, [
+    fetchGeneratedChallenge,
+    pickNextCodeLesson,
+    codeSessionAttempted,
+    codeSessionCorrect,
+  ]);
+
+  const loadCodeChallenge = useCallback(() => {
+    const reinforce = reinforceTopicRef.current;
+    reinforceTopicRef.current = null;
+
+    // After a miss: an instant, topic-matched curated challenge at easy difficulty.
+    if (reinforce) {
+      applyChallenge(curatedToChallenge(reinforce), "easy");
+      startCodePrefetch();
+      return;
     }
 
     // A generated challenge prepared in the background → show it instantly.
