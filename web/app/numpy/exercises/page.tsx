@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { PythonCodeEditor } from "@/components/python-code";
 import {
@@ -16,6 +16,13 @@ import { runAndValidateChallenge, type CodeChallengeCheck } from "@/lib/numpy-co
 import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { loadNumpyPlacement, type NumpyPlacementPayload } from "@/lib/numpy-placement-storage";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import {
+  findSavedProblem,
+  getSavedProblemsServerSnapshot,
+  getSavedProblemsSnapshot,
+  subscribeSavedProblems,
+  toggleSavedProblem,
+} from "@/lib/numpy-saved-problems";
 
 type DrillMcq = {
   topic: string;
@@ -77,7 +84,7 @@ function NumpyExercisesContent() {
   useEffect(() => {
     setPlacement(loadNumpyPlacement());
     const t = searchParams.get("tab");
-    if (t === "code") setTab("code");
+    if (t === "code" || searchParams.get("saved")) setTab("code");
   }, [searchParams]);
 
   const summary = useMemo(() => {
@@ -160,6 +167,15 @@ function NumpyExercisesContent() {
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
+  /** Saved (bookmarked) problems for the current account. */
+  const savedProblems = useSyncExternalStore(
+    subscribeSavedProblems,
+    getSavedProblemsSnapshot,
+    getSavedProblemsServerSnapshot,
+  );
+  const isCurrentSaved = !!challenge && savedProblems.some((p) => p.id === challenge.id);
+  /** Open at most one saved problem from a ?saved=<id> deep link. */
+  const openedSavedRef = useRef(false);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
   const [pyodideLoading, setPyodideLoading] = useState(true);
@@ -227,9 +243,48 @@ function NumpyExercisesContent() {
     }
   }, [focusHint]);
 
+  const openSavedProblem = useCallback((id: string): boolean => {
+    const saved = findSavedProblem(id);
+    if (!saved) return false;
+    const ch: CodeChallenge = {
+      id: saved.id,
+      topic: saved.topic,
+      prompt: saved.prompt,
+      starterCode: saved.starterCode ?? FALLBACK_CODE.starterCode,
+      expectedOutputs: saved.expectedOutputs,
+      checks: saved.checks,
+      hint: saved.hint,
+    };
+    setChallenge(ch);
+    setCodeInput(ch.starterCode);
+    setRunStatus("idle");
+    setRunMessage("");
+    setCodeError(null);
+    return true;
+  }, []);
+
   useEffect(() => {
-    if (tab === "code" && !challenge && !codeLoading) void loadCodeChallenge();
-  }, [tab, challenge, codeLoading, loadCodeChallenge]);
+    if (tab !== "code" || challenge || codeLoading) return;
+    const savedId = searchParams.get("saved");
+    if (savedId && !openedSavedRef.current) {
+      openedSavedRef.current = true;
+      if (openSavedProblem(savedId)) return;
+    }
+    void loadCodeChallenge();
+  }, [tab, challenge, codeLoading, loadCodeChallenge, openSavedProblem, searchParams]);
+
+  function toggleSaveCurrent() {
+    if (!challenge) return;
+    toggleSavedProblem({
+      id: challenge.id,
+      topic: challenge.topic,
+      prompt: challenge.prompt,
+      hint: challenge.hint,
+      starterCode: challenge.starterCode,
+      checks: challenge.checks,
+      expectedOutputs: challenge.expectedOutputs,
+    });
+  }
 
   async function runCode() {
     if (!canRun || !challenge) return;
@@ -388,6 +443,18 @@ function NumpyExercisesContent() {
                     className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-800 hover:bg-slate-50"
                   >
                     New challenge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleSaveCurrent}
+                    aria-pressed={isCurrentSaved}
+                    className={`ml-auto rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                      isCurrentSaved
+                        ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {isCurrentSaved ? "★ Saved" : "☆ Save problem"}
                   </button>
                 </div>
                 {runMessage && (
