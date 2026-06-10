@@ -825,7 +825,18 @@ export default function FindMyLevelPage() {
               <p className="text-xs text-slate-300">Press 1–4 to select · Enter to continue</p>
             </div>
 
-            <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
+            {/* Difficulty badge — shows the adaptive level for this question */}
+            <div className="mt-6 flex items-center gap-2">
+              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
+                question.difficulty === "hard"   ? "bg-red-100 text-red-700" :
+                question.difficulty === "medium" ? "bg-amber-100 text-amber-700" :
+                                                   "bg-sky-100 text-sky-700"
+              }`}>
+                {question.difficulty}
+              </span>
+              <span className="text-xs text-slate-400">{question.topic}</span>
+            </div>
+            <h2 className="mt-2 text-xl font-semibold text-gray-900">{question.prompt}</h2>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {!showHint ? (
