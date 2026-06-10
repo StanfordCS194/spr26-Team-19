@@ -61,18 +61,37 @@ type CodeChallenge = {
   hint: string;
 };
 
+/** Topics a user can manually select in the topic picker. */
+const DRILL_TOPICS = [
+  "NumPy arrays and indexing",
+  "Array slicing",
+  "Array shapes and reshaping",
+  "Boolean indexing",
+  "Array creation (zeros, ones, arange)",
+  "Array math and operations",
+  "Aggregation (sum, mean, min, max)",
+  "Broadcasting",
+  "Sorting and editing",
+  "Transpose and flatten",
+  "Matrices and dot product",
+  "Random number generation",
+] as const;
+
 function NumpyExercisesContent() {
   const searchParams = useSearchParams();
   const [placement, setPlacement] = useState<NumpyPlacementPayload | null>(null);
   const [tab, setTab] = useState<"mcq" | "code">("code");
+  /** When set, overrides the placement-derived focus topic with the user's pick. */
+  const [topicOverride, setTopicOverride] = useState<string | null>(null);
 
   const focusHint = useMemo(() => {
+    if (topicOverride) return topicOverride;
     const q = searchParams.get("focus")?.trim();
     if (q) return q;
     if (placement?.recommendedTopic) return placement.recommendedTopic;
     if (placement?.weakTopics?.length) return placement.weakTopics[0]!;
     return "NumPy arrays and indexing";
-  }, [placement, searchParams]);
+  }, [placement, searchParams, topicOverride]);
 
   const topicProgressKey = useMemo(() => slugifyTopic(focusHint), [focusHint]);
 
@@ -393,26 +412,45 @@ function NumpyExercisesContent() {
   return (
     <main className="min-h-screen bg-slate-50 p-6 md:p-10">
       <div className="mx-auto max-w-3xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/numpy/path" className="text-sm text-sky-700 hover:underline">
             ← Back to path
           </Link>
-          <p className="text-xs text-slate-500">
-            {tab === "code" ? (
-              <>
-                Code topic: <strong>{challenge?.topic ?? "rotating curriculum"}</strong>
-                <span className="ml-2 text-slate-400">· cycles through all 27 lessons</span>
-              </>
-            ) : (
-              <>
-                MCQ focus:{" "}
-                <strong>{pickFocusTopic(topicMistakes, focusHint) ?? focusHint}</strong>
-                {Object.keys(topicMistakes).length > 0 && (
-                  <span className="ml-2 text-amber-700">· adapting to your mistakes</span>
-                )}
-              </>
+
+          {/* Topic picker — lets users override placement-derived focus */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="topic-picker" className="text-xs font-medium text-slate-500 shrink-0">
+              Focus topic:
+            </label>
+            <select
+              id="topic-picker"
+              value={topicOverride ?? focusHint}
+              onChange={(e) => {
+                setTopicOverride(e.target.value);
+                // Reset current questions so the new topic loads immediately.
+                setMcq(null);
+                setChallenge(null);
+                setMcqSelected(null);
+                setRunStatus("idle");
+                setRunMessage("");
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+            >
+              {DRILL_TOPICS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            {topicOverride && (
+              <button
+                type="button"
+                onClick={() => { setTopicOverride(null); setMcq(null); setChallenge(null); }}
+                className="text-xs text-slate-400 hover:text-slate-600"
+                title="Reset to placement-recommended topic"
+              >
+                ✕
+              </button>
             )}
-          </p>
+          </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
