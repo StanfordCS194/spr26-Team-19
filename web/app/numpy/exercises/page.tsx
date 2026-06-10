@@ -260,6 +260,9 @@ function NumpyExercisesContent() {
   const codeAttemptRef = useRef(0);
   /** XP / progress for the current challenge are granted at most once. */
   const codeRewardClaimedRef = useRef(false);
+  /** A generated challenge fetched in the background, ready to show instantly. */
+  const prefetchedChallengeRef = useRef<CodeChallenge | null>(null);
+  const prefetchInFlightRef = useRef(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   /** Saved (bookmarked) problems for the current account. */
   const savedProblems = useSyncExternalStore(
@@ -271,6 +274,8 @@ function NumpyExercisesContent() {
   /** Open at most one saved problem from a ?saved=<id> deep link. */
   const openedSavedRef = useRef(false);
   const [seenCodePrompts, setSeenCodePrompts] = useState<string[]>([]);
+  /** Ref mirror so background prefetch reads the latest seen prompts without re-subscribing. */
+  const seenCodePromptsRef = useRef<string[]>([]);
   const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
@@ -297,52 +302,19 @@ function NumpyExercisesContent() {
     };
   }, []);
 
-  const loadCodeChallenge = useCallback(async () => {
-    setCodeLoading(true);
-    setCodeError(null);
-    setRunStatus("idle");
-    setRunMessage("");
-    const reinforceWeakTopic = reinforceTopicRef.current;
-    reinforceTopicRef.current = null;
-    const difficulty = reinforceWeakTopic
-      ? "easy"
-      : difficultyFromSession(codeSessionAttempted, codeSessionCorrect);
-    const lesson = pickRotatingCodeLesson({
-      placementRecommended: placement?.recommendedTopic ?? null,
-      placementWeak: placement?.weakTopics,
-      urlFocus: searchParams.get("focus") ?? undefined,
-      reinforceTopic: reinforceWeakTopic,
-      recentLessonIds: seenCodeLessonIdsRef.current,
-      rotationIndex: codeRotationRef.current,
-    });
-    codeRotationRef.current += 1;
-    seenCodeLessonIdsRef.current = [
-      ...seenCodeLessonIdsRef.current.slice(-8),
-      lesson.id,
-    ];
-    setDrillDifficulty(difficulty);
-    try {
-      const res = await fetch("/api/generate-code-challenge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          difficulty,
-          lessonId: lesson.id,
-          focusTopic: lesson.focus,
-          reinforceWeakTopic: reinforceWeakTopic ?? undefined,
-          seenPrompts: seenCodePrompts,
-        }),
-      });
-      if (!res.ok) throw new Error("bad");
-      const data = (await res.json()) as Record<string, unknown>;
-      if (typeof data.id !== "string" || typeof data.prompt !== "string" || typeof data.starterCode !== "string") {
-        throw new Error("shape");
-      }
+  // Keep the ref mirror current so background prefetch sees the latest prompts.
+  useEffect(() => {
+    seenCodePromptsRef.current = seenCodePrompts;
+  }, [seenCodePrompts]);
+
+  const buildChallengeFromData = useCallback(
+    (data: Record<string, unknown>): CodeChallenge | null => {
+      if (typeof data.id !== "string" || typeof data.prompt !== "string") return null;
       const hasChecks = Array.isArray(data.checks) && data.checks.length > 0;
       const hasExpected =
         Array.isArray(data.expectedOutputs) && data.expectedOutputs.length > 0;
-      if (!hasChecks && !hasExpected) throw new Error("shape");
-      const ch: CodeChallenge = {
+      if (!hasChecks && !hasExpected) return null;
+      return {
         id: data.id,
         topic: typeof data.topic === "string" ? data.topic : "general",
         prompt: data.prompt,
@@ -353,34 +325,47 @@ function NumpyExercisesContent() {
         checks: Array.isArray(data.checks) ? (data.checks as CodeChallengeCheck[]) : undefined,
         hint: typeof data.hint === "string" ? data.hint : "",
       };
-      codeAttemptRef.current = 0;
-      codeRewardClaimedRef.current = false;
-      setChallenge(ch);
-      setCodeInput(MINIMAL_STARTER_CODE);
-      setSeenCodePrompts((prev) =>
-        prev.includes(ch.prompt) ? prev : [...prev, ch.prompt],
-      );
-    } catch {
-      const fallback = pickCuratedCodeChallenge(lesson.focus);
-      codeAttemptRef.current = 0;
-      codeRewardClaimedRef.current = false;
-      setChallenge({
-        id: fallback.id,
-        topic: fallback.topic,
-        prompt: fallback.prompt,
-        starterCode: MINIMAL_STARTER_CODE,
-        checks: fallback.checks,
-        hint: fallback.hint,
+    },
+    [],
+  );
+
+  const pickNextCodeLesson = useCallback(
+    (reinforceTopic: string | null) => {
+      const lesson = pickRotatingCodeLesson({
+        placementRecommended: placement?.recommendedTopic ?? null,
+        placementWeak: placement?.weakTopics,
+        urlFocus: searchParams.get("focus") ?? undefined,
+        reinforceTopic,
+        recentLessonIds: seenCodeLessonIdsRef.current,
+        rotationIndex: codeRotationRef.current,
       });
       setCodeInput(MINIMAL_STARTER_CODE);
       setCodeError(null);
     } finally {
       setCodeLoading(false);
     }
+
+    // A generated challenge prepared in the background → show it instantly.
+    const ready = prefetchedChallengeRef.current;
+    if (ready) {
+      prefetchedChallengeRef.current = null;
+      applyChallenge(ready, difficultyFromSession(codeSessionAttempted, codeSessionCorrect));
+      startCodePrefetch();
+      return;
+    }
+
+    // Nothing buffered yet → show a curated challenge now, generate the next in the background.
+    const lesson = pickNextCodeLesson(null);
+    applyChallenge(
+      curatedToChallenge(lesson.focus),
+      difficultyFromSession(codeSessionAttempted, codeSessionCorrect),
+    );
+    startCodePrefetch();
   }, [
-    placement,
-    searchParams,
-    seenCodePrompts,
+    applyChallenge,
+    curatedToChallenge,
+    pickNextCodeLesson,
+    startCodePrefetch,
     codeSessionAttempted,
     codeSessionCorrect,
   ]);
