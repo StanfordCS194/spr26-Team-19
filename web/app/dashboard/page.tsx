@@ -17,6 +17,12 @@ import {
   loadNumpyPlacement,
   subscribePlacementCompleted,
 } from "@/lib/numpy-placement-storage";
+import {
+  getProgressServerSnapshot,
+  getProgressSnapshot,
+  subscribeProgress,
+} from "@/lib/numpy-progress-store";
+import { buildUnitRoute } from "@/lib/numpy-route";
 
 type User = {
   name: string;
@@ -43,6 +49,11 @@ export default function DashboardPage() {
     getPlacementCompletedSnapshot,
     getPlacementCompletedServerSnapshot,
   );
+  const progress = useSyncExternalStore(
+    subscribeProgress,
+    getProgressSnapshot,
+    getProgressServerSnapshot,
+  );
 
   useEffect(() => {
     const savedUser = localStorage.getItem("adaptedCurrentUser");
@@ -66,6 +77,16 @@ export default function DashboardPage() {
   if (!user) return null;
 
   const tier = getTierForXP(xpRecord.total);
+
+  // Compute the "continue" target: the current unit stop on the learning path.
+  // Only computed when placement is done so we have meaningful path data.
+  const resumeStop = (() => {
+    if (!placementDone) return null;
+    const placement = loadNumpyPlacement();
+    const stops = buildUnitRoute(placement, progress);
+    const current = stops.find((s) => s.status === "current") ?? stops.find((s) => s.status === "available");
+    return current ?? null;
+  })();
   const nextTier = getNextTier(xpRecord.total);
   const xpProgress = getXPProgressInTier(xpRecord.total);
 
@@ -225,8 +246,30 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Resume card — shown when placement is done and there's an active unit */}
+          {placementDone && resumeStop && (
+            <Link
+              href={resumeStop.href ?? "/numpy/path"}
+              className="mt-6 flex items-center justify-between gap-4 rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{resumeStop.icon}</span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Continue where you left off</p>
+                  <p className="mt-0.5 text-lg font-bold text-slate-900">{resumeStop.label}</p>
+                  {resumeStop.percent !== null && (
+                    <p className="text-xs text-slate-500">{resumeStop.percent}% mastered</p>
+                  )}
+                </div>
+              </div>
+              <span className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
+                Resume →
+              </span>
+            </Link>
+          )}
+
           {/* Learning path cards */}
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
             <Link
               href="/numpy/lessons"
               className="group rounded-2xl border border-pink-200 bg-gradient-to-br from-pink-50 to-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
