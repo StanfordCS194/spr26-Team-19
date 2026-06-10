@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 // Generic shape for each multiple-choice question used in the MCQ stage.
 type QuizQuestion = {
@@ -100,25 +101,16 @@ const codingChallenges: CodingChallenge[] = [
   {
     id: "slice-1d",
     prompt:
-      "Create a NumPy array `a = np.array([10, 20, 30, 40, 50])` and set `answer` to the slice that returns [20, 30, 40].",
-    starterCode: `import numpy as np
-
-a = np.array([10, 20, 30, 40, 50])
-# Set answer below
-answer = None`,
+      "Build a one-dimensional array with values 10, 20, 30, 40, and 50. Set `answer` to the three middle elements.",
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["[20, 30, 40]", "array([20, 30, 40])"],
     hint: "Use slicing with start index 1 and end index 4.",
   },
   {
     id: "newaxis-shape",
     prompt:
-      "Create `a = np.arange(6)` and set `answer` to the shape after converting it to a column vector with `np.newaxis`.",
-    starterCode: `import numpy as np
-
-a = np.arange(6)
-col = a[:, np.newaxis]
-# Set answer below
-answer = None`,
+      "Build a one-dimensional array of integers 0 through 5, turn it into a column vector, and set `answer` to that column's shape.",
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["(6, 1)", "(6,1)"],
     hint: "Use `col.shape` for the answer.",
   },
@@ -156,7 +148,7 @@ export default function BasicsQuizPage() {
   const [passedChallengeIds, setPassedChallengeIds] = useState<string[]>([]);
   const [firstTryPassedIds, setFirstTryPassedIds] = useState<string[]>([]);
   const [challengeAttempts, setChallengeAttempts] = useState<Record<string, number>>({});
-  const [codeInput, setCodeInput] = useState(codingChallenges[0].starterCode);
+  const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   // Runtime execution and messaging state for Pyodide code runner.
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
@@ -356,7 +348,7 @@ export default function BasicsQuizPage() {
     setPhase("code");
     setSelected(null);
     setCodeIndex(0);
-    setCodeInput(codingChallenges[0].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowHint(false);
@@ -410,7 +402,7 @@ export default function BasicsQuizPage() {
     }
     const nextIndex = codeIndex + 1;
     setCodeIndex(nextIndex);
-    setCodeInput(codingChallenges[nextIndex].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
   }
@@ -431,7 +423,7 @@ export default function BasicsQuizPage() {
     setFirstTryPassedIds([]);
     setChallengeAttempts({});
     setCodeIndex(0);
-    setCodeInput(codingChallenges[0].starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowHint(false);

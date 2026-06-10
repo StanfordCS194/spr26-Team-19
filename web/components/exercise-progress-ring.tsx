@@ -3,9 +3,10 @@
 /** Circular progress for exercise zone (0–100, or null = no attempts yet). */
 export function ExerciseProgressRing({ percent }: { percent: number | null }) {
   const r = 40;
-  const c = 2 * Math.PI * r;
+  // Round SVG stroke math so server/client markup stays identical.
+  const c = Math.round(2 * Math.PI * r * 100) / 100;
   const p = percent == null ? 0 : Math.min(100, Math.max(0, percent));
-  const offset = c * (1 - p / 100);
+  const offset = Math.round(c * (1 - p / 100) * 100) / 100;
 
   return (
     <div className="flex items-center gap-3">

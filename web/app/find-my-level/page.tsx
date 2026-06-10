@@ -10,6 +10,7 @@ import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
 import { XPToast } from "@/components/xp-toast";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 type PlacementResult = {
   level: string;
@@ -55,21 +56,12 @@ const placementCodingChallenges: PlacementCodingChallenge[] = [
     id: "placement-mask-then-sum",
     topic: "indexing",
     difficulty: "medium",
-    prompt: `Multi-step: you have a 3×4 array \`a\` containing 0…11 in row-major order.
+    prompt: `Multi-step: build a 3×4 array containing 0 through 11 in row-major order.
 
-1) Make a copy of \`a\` so the original \`a\` is unchanged.
-2) On that copy, set every value strictly greater than 8 to 0 (boolean indexing is appropriate).
+1) Make a copy so the original array is unchanged.
+2) On that copy, set every value strictly greater than 8 to 0.
 3) Set \`answer\` to the sum of all entries in the modified copy.`,
-    starterCode: `import numpy as np
-
-a = np.arange(12).reshape(3, 4)
-
-# TODO (multiple steps):
-#   b = copy of a — do not mutate a in place
-#   zero out values in b where value > 8
-#   answer = total of b
-
-answer = None`,
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["np.int64(36)", "36"],
     hint: "Duplicating the array first avoids side effects; then think how to target elements above a cutoff and collapse the grid to one number.",
   },
@@ -77,25 +69,13 @@ answer = None`,
     id: "placement-diagonal-pipeline",
     topic: "shape ops",
     difficulty: "medium",
-    prompt: `Multi-step: square matrix \`m\` is given below.
+    prompt: `Multi-step: build a 3×3 matrix with values 1 through 9 in row-major order.
 
 1) Extract its main diagonal as a 1D array.
 2) Multiply every element of that diagonal by 2.
 3) Reverse the resulting vector (last element first).
 4) Set \`answer\` to that final 1D array.`,
-    starterCode: `import numpy as np
-
-m = np.array([[1, 2, 3],
-              [4, 5, 6],
-              [7, 8, 9]])
-
-# TODO (multiple steps):
-#   diagonal of m as 1D
-#   scale it by 2
-#   reverse the order
-#   assign to answer
-
-answer = None`,
+    starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["array([18,10,2])"],
     hint: "There is a dedicated way to read the main diagonal; afterward you are doing element-wise math on a 1D array, then reversing index order.",
   },
@@ -357,9 +337,10 @@ export default function FindMyLevelPage() {
 
   const [codeIndex, setCodeIndex] = useState(0);
   const [firstTryPassedIds, setFirstTryPassedIds] = useState<string[]>([]);
+  const [xpClaimedCodeIds, setXpClaimedCodeIds] = useState<string[]>([]);
   const [completion, setCompletion] = useState<PlacementResult | null>(null);
   const [challengeAttempts, setChallengeAttempts] = useState<Record<string, number>>({});
-  const [codeInput, setCodeInput] = useState(placementCodingChallenges[0]!.starterCode);
+  const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
   const [pyodideLoading, setPyodideLoading] = useState(true);
@@ -569,7 +550,7 @@ export default function FindMyLevelPage() {
     setPhase("code");
     setSelected(null);
     setCodeIndex(0);
-    setCodeInput(placementCodingChallenges[0]!.starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowHint(false);
@@ -596,16 +577,25 @@ export default function FindMyLevelPage() {
         : "";
       setRunMessage(`${outcome.message}${printLine}`);
       if (passed) {
-        if (attemptsSoFar === 0) {
-          setFirstTryPassedIds((prev) => {
-            if (prev.includes(codeChallenge.id)) return prev;
-            return [...prev, codeChallenge.id];
-          });
-          const r1 = awardXPWithResult("code_first_try");
-          setXpToast({ amount: XP_AWARD.code_first_try, ...(r1.leveledUp ? { levelUpTier: r1.newTier } : {}) });
-        } else {
-          const r2 = awardXPWithResult("code_pass");
-          setXpToast({ amount: XP_AWARD.code_pass, ...(r2.leveledUp ? { levelUpTier: r2.newTier } : {}) });
+        if (!xpClaimedCodeIds.includes(codeChallenge.id)) {
+          setXpClaimedCodeIds((prev) => [...prev, codeChallenge.id]);
+          if (attemptsSoFar === 0) {
+            setFirstTryPassedIds((prev) => {
+              if (prev.includes(codeChallenge.id)) return prev;
+              return [...prev, codeChallenge.id];
+            });
+            const r1 = awardXPWithResult("code_first_try");
+            setXpToast({
+              amount: XP_AWARD.code_first_try,
+              ...(r1.leveledUp ? { levelUpTier: r1.newTier } : {}),
+            });
+          } else {
+            const r2 = awardXPWithResult("code_pass");
+            setXpToast({
+              amount: XP_AWARD.code_pass,
+              ...(r2.leveledUp ? { levelUpTier: r2.newTier } : {}),
+            });
+          }
         }
       } else if (attemptsSoFar === 0) {
         setTopicMistakes((prev) => ({
@@ -625,7 +615,7 @@ export default function FindMyLevelPage() {
     if (codeIndex === placementCodingChallenges.length - 1) return;
     const nextIndex = codeIndex + 1;
     setCodeIndex(nextIndex);
-    setCodeInput(placementCodingChallenges[nextIndex]!.starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
     setShowCodeHint(false);
@@ -649,7 +639,7 @@ export default function FindMyLevelPage() {
     setCodeIndex(0);
     setFirstTryPassedIds([]);
     setChallengeAttempts({});
-    setCodeInput(placementCodingChallenges[0]!.starterCode);
+    setCodeInput(MINIMAL_STARTER_CODE);
     setRunStatus("idle");
     setRunMessage("");
   }

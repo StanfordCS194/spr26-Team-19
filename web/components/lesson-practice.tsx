@@ -10,10 +10,11 @@ import { lessonProgress, notifyProgressChange } from "@/lib/numpy-progress-store
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
+import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const practice = lesson.practice;
-  const [code, setCode] = useState(practice?.starterCode ?? "");
+  const [code, setCode] = useState(MINIMAL_STARTER_CODE);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [runMessage, setRunMessage] = useState("");
   const [showHint, setShowHint] = useState(false);
@@ -112,7 +113,7 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
         <button
           type="button"
           onClick={() => {
-            setCode(practice.starterCode);
+            setCode(MINIMAL_STARTER_CODE);
             setRunStatus("idle");
             setRunMessage("");
           }}

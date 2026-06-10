@@ -110,6 +110,35 @@ export function checkScalar(value: number): CodeChallengeCheck {
   };
 }
 
+/** Verify the learner created an input array (blocks hard-coded answers). */
+export function checkSourceArray(
+  varName: string,
+  expected: number[] | number[][],
+): CodeChallengeCheck {
+  return {
+    id: `source-${varName}`,
+    assert: `isinstance(${varName}, np.ndarray) and np.array_equal(${varName}, np.array(${JSON.stringify(expected)}))`,
+    message: `Create \`${varName}\` with the array from the prompt.`,
+    capture: varName,
+  };
+}
+
+/** Verify `answer` is derived from a source variable expression. */
+export function checkDerivedAnswer(
+  id: string,
+  expr: string,
+  message: string,
+  skill?: string,
+): CodeChallengeCheck {
+  return {
+    id,
+    assert: expr,
+    message,
+    capture: "answer",
+    ...(skill ? { skill } : {}),
+  };
+}
+
 export function resolveChallengeChecks(spec: CodeChallengeSpec): CodeChallengeCheck[] {
   if (spec.checks?.length) return spec.checks;
   if (spec.expectedOutputs?.length) return checksFromExpectedOutputs(spec.expectedOutputs);
