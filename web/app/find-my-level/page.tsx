@@ -419,6 +419,25 @@ export default function FindMyLevelPage() {
     };
   }, []);
 
+  // Keyboard shortcuts: 1-4 selects an answer, Enter advances after answering
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (phase !== "mcq") return;
+      if (e.key === "Enter" && hasAnswered) {
+        if (!isLastQuestion) handleNext();
+        else moveToCodingStage();
+        return;
+      }
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 4 && !hasAnswered) {
+        handleSelect(num - 1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, hasAnswered, isLastQuestion, index]);
+
   function getWeakTopics() {
     const merged = new Map<string, number>();
     for (const [topic, count] of Object.entries(topicMistakes)) {
@@ -785,15 +804,18 @@ export default function FindMyLevelPage() {
 
         {phase === "mcq" && (
           <>
-            <p className="mt-3 text-xs text-slate-400">
-              {isPrefetchingMcq
-                ? "Preparing next question…"
-                : mcqGenerationStatus === "generated"
-                  ? "AI-generated question"
-                  : mcqGenerationStatus === "fallback"
-                    ? "Fallback question"
-                    : ""}
-            </p>
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-slate-400">
+                {isPrefetchingMcq
+                  ? "Preparing next question…"
+                  : mcqGenerationStatus === "generated"
+                    ? "AI-generated question"
+                    : mcqGenerationStatus === "fallback"
+                      ? "Fallback question"
+                      : ""}
+              </p>
+              <p className="text-xs text-slate-300">Press 1–4 to select · Enter to continue</p>
+            </div>
 
             <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
 

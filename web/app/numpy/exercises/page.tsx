@@ -235,6 +235,20 @@ function NumpyExercisesContent() {
     void loadMcq();
   }
 
+  // Keyboard nav: 1–4 to select, Enter to load next question
+  useEffect(() => {
+    if (tab !== "mcq") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Enter" && mcqSelected !== null) { onMcqNext(); return; }
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 4 && mcqSelected === null) onMcqPick(n - 1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // deps: tab + mcqSelected so the handler sees fresh state
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, mcqSelected]);
+
   /* —— Code lab —— */
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
