@@ -592,6 +592,29 @@ export default function FindMyLevelPage() {
     setShowHint(false);
   }
 
+  /**
+   * Skip the current MCQ without answering. Counts the topic as a miss so the
+   * adaptive engine knows to revisit it, but does not penalise the score.
+   * Requested in user testing: "skip questions if you don't know the answer."
+   */
+  function handleSkip() {
+    if (phase !== "mcq" || hasAnswered) return;
+    // Log as a topic weakness so post-placement recommendations stay accurate.
+    setTopicMistakes((prev) => ({
+      ...prev,
+      [question.topic]: (prev[question.topic] ?? 0) + 1,
+    }));
+    setHistory((prev) => [
+      ...prev,
+      { ...question, chosenIndex: -1, isCorrect: false },
+    ]);
+    if (isLastQuestion) {
+      moveToCodingStage();
+    } else {
+      handleNext();
+    }
+  }
+
   function moveToCodingStage() {
     setPhase("code");
     setSelected(null);
@@ -774,7 +797,7 @@ export default function FindMyLevelPage() {
 
             <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               {!showHint ? (
                 <button
                   className="px-4 py-2 border border-blue-600 text-blue-600 rounded hover:bg-blue-50"
@@ -784,10 +807,20 @@ export default function FindMyLevelPage() {
                   Show hint
                 </button>
               ) : (
-                <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3">
+                <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 flex-1">
                   <p className="text-sm font-medium text-yellow-800">Hint</p>
                   <p className="mt-1 text-sm text-gray-800">{question.hint}</p>
                 </div>
+              )}
+              {!hasAnswered && (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm text-slate-400 hover:text-slate-600 hover:underline"
+                  onClick={handleSkip}
+                  title="Skip this question — it will be marked as a weak topic"
+                >
+                  Skip question
+                </button>
               )}
             </div>
 
