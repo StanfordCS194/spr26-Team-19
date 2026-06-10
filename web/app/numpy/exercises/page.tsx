@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExt
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
 import { BadgeToast } from "@/components/badge-toast";
+import { CodeTutorChat } from "@/components/code-tutor-chat";
 import { checkTierBadge, tryAwardBadge, type Badge } from "@/lib/achievements";
 import {
   awardXPWithResult,
@@ -711,6 +712,15 @@ function NumpyExercisesContent() {
                     {runMessage}
                   </p>
                 )}
+                <CodeTutorChat
+                  challenge={{
+                    id: challenge.id,
+                    topic: challenge.topic,
+                    prompt: challenge.prompt,
+                    hint: challenge.hint,
+                  }}
+                  learnerCode={codeInput}
+                />
               </div>
             )}
           </section>
