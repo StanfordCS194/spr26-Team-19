@@ -550,9 +550,15 @@ function NumpyExercisesContent() {
                   </div>
                 </div>
               )}
+              {/* All-time vs this-session breakdown */}
               <p className="text-xs text-slate-400">
-                {summary.totalAttempted} attempts · {summary.totalCorrect} correct
+                All time: {summary.totalAttempted} attempts · {summary.totalCorrect} correct
               </p>
+              {(mcqSessionAttempted + codeSessionAttempted) > 0 && (
+                <p className="text-xs font-medium text-sky-600">
+                  This session: {mcqSessionCorrect + codeSessionCorrect}/{mcqSessionAttempted + codeSessionAttempted} correct
+                </p>
+              )}
             </div>
           </div>
         </div>
