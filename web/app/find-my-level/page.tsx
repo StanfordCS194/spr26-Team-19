@@ -985,7 +985,13 @@ export default function FindMyLevelPage() {
         open={completion !== null}
         emoji="🏆"
         title="Placement complete!"
-        message="Nice work — here’s where you landed. Your personalized path is ready."
+        message={
+          completion?.level === "Advanced"
+            ? "Strong performance — you’re placed at Advanced. Your path starts from the tougher units."
+            : completion?.level === "Intermediate"
+              ? "Solid work — you’re placed at Intermediate. Your path skips the basics and goes right to the good stuff."
+              : "You’re placed at Beginner. Your path starts from the foundations and builds up steadily."
+        }
         highlight={completion ? { label: "Your level", value: completion.level } : undefined}
         stats={
           completion
@@ -998,8 +1004,12 @@ export default function FindMyLevelPage() {
                   label: "Code (first try)",
                   value: `${completion.codeScore} / ${completion.totalCode}`,
                 },
+                {
+                  label: "Overall",
+                  value: `${Math.round(((completion.mcqScore + completion.codeScore) / (completion.totalMcq + completion.totalCode)) * 100)}%`,
+                },
                 ...(completion.recommendedTopic
-                  ? [{ label: "Start with", value: completion.recommendedTopic }]
+                  ? [{ label: "Focus topic", value: completion.recommendedTopic }]
                   : []),
               ]
             : undefined
