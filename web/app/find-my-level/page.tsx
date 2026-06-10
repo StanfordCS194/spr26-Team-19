@@ -8,6 +8,8 @@ import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
 import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
 import { XPToast } from "@/components/xp-toast";
+import { BadgeToast } from "@/components/badge-toast";
+import { checkStreakBadge, checkTierBadge, tryAwardBadge, type Badge } from "@/lib/achievements";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
@@ -393,6 +395,7 @@ export default function FindMyLevelPage() {
   const [pyodideError, setPyodideError] = useState("");
   const canRunPython = !pyodideLoading && !pyodideError;
   const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+  const [badgeToast, setBadgeToast] = useState<Badge | null>(null);
 
   const question = currentQuestion; // Alias for readability in JSX.
   const hasAnswered = selected !== null;
@@ -579,6 +582,8 @@ export default function FindMyLevelPage() {
       setMcqScore((prev) => prev + 1);
       const r = awardXPWithResult("mcq_correct");
       setXpToast({ amount: XP_AWARD.mcq_correct, ...(r.leveledUp ? { levelUpTier: r.newTier } : {}) });
+      // First-correct badge + tier/streak checks
+      setBadgeToast((prev) => prev ?? tryAwardBadge("first-correct") ?? checkTierBadge(r.newTier.minXP) ?? checkStreakBadge(0));
     } else {
       setTopicMistakes((prev) => ({
         ...prev,
@@ -677,12 +682,14 @@ export default function FindMyLevelPage() {
               amount: XP_AWARD.code_first_try,
               ...(r1.leveledUp ? { levelUpTier: r1.newTier } : {}),
             });
+            setBadgeToast((prev) => prev ?? tryAwardBadge("first-code") ?? checkTierBadge(r1.newTier.minXP));
           } else {
             const r2 = awardXPWithResult("code_pass");
             setXpToast({
               amount: XP_AWARD.code_pass,
               ...(r2.leveledUp ? { levelUpTier: r2.newTier } : {}),
             });
+            setBadgeToast((prev) => prev ?? checkTierBadge(r2.newTier.minXP));
           }
         }
       } else if (attemptsSoFar === 0) {
@@ -746,6 +753,7 @@ export default function FindMyLevelPage() {
     });
     const rp = awardXPWithResult("placement_complete");
     setXpToast({ amount: XP_AWARD.placement_complete, ...(rp.leveledUp ? { levelUpTier: rp.newTier } : {}) });
+    setBadgeToast((prev) => prev ?? tryAwardBadge("placed") ?? checkTierBadge(rp.newTier.minXP));
     setCompletion({
       level,
       mcqScore,
@@ -1021,6 +1029,7 @@ export default function FindMyLevelPage() {
         secondaryAction={{ label: "Go to dashboard", href: "/dashboard" }}
       />
       <XPToast amount={xpToast?.amount ?? null} levelUpTier={xpToast?.levelUpTier} onDone={() => setXpToast(null)} />
+      <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />
     </main>
   );
 }

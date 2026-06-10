@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PythonCodeEditor } from "@/components/python-code";
 import { XPToast } from "@/components/xp-toast";
+import { BadgeToast } from "@/components/badge-toast";
 import type { Lesson } from "@/lib/numpy-curriculum";
 import { EXERCISE_ZONE_CODE_LAB, loadNumpyExerciseProgress, recordExerciseResult } from "@/lib/numpy-exercise-progress";
 import { slugifyTopic } from "@/lib/numpy-learning-path";
@@ -10,6 +11,7 @@ import { lessonProgress, notifyProgressChange } from "@/lib/numpy-progress-store
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
+import { tryAwardBadge, checkTierBadge, type Badge } from "@/lib/achievements";
 import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
 
 export function LessonPractice({ lesson }: { lesson: Lesson }) {
@@ -21,6 +23,7 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
   const [pyodideLoading, setPyodideLoading] = useState(true);
   const [pyodideError, setPyodideError] = useState("");
   const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+  const [badgeToast, setBadgeToast] = useState<Badge | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +74,7 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
             amount: XP_AWARD.lesson_mastered,
             ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
           });
+          setBadgeToast((prev) => prev ?? tryAwardBadge("first-mastery") ?? checkTierBadge(result.newTier.minXP));
         }
       }
     } catch (e) {
@@ -145,6 +149,7 @@ export function LessonPractice({ lesson }: { lesson: Lesson }) {
         levelUpTier={xpToast?.levelUpTier}
         onDone={() => setXpToast(null)}
       />
+      <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />
     </section>
   );
 }

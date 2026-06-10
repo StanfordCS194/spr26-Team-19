@@ -5,7 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
+import { BadgeToast } from "@/components/badge-toast";
 import { CodeTutorChat } from "@/components/code-tutor-chat";
+import { checkTierBadge, tryAwardBadge, type Badge } from "@/lib/achievements";
 import {
   awardXPWithResult,
   XP_AWARD,
@@ -136,6 +138,7 @@ function NumpyExercisesContent() {
   const [mcqSelected, setMcqSelected] = useState<number | null>(null);
   const [seenMcqPrompts, setSeenMcqPrompts] = useState<string[]>([]);
   const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+  const [badgeToast, setBadgeToast] = useState<Badge | null>(null);
 
   const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
   const tier = getTierForXP(xpRecord.total);
@@ -221,6 +224,7 @@ function NumpyExercisesContent() {
         amount: XP_AWARD.mcq_correct,
         ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
       });
+      setBadgeToast((prev) => prev ?? tryAwardBadge("first-correct") ?? checkTierBadge(result.newTier.minXP));
     } else {
       setTopicMistakes((prev) => ({
         ...prev,
@@ -454,6 +458,7 @@ function NumpyExercisesContent() {
             amount: XP_AWARD[eventType],
             ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
           });
+          setBadgeToast((prev) => prev ?? tryAwardBadge("first-code") ?? checkTierBadge(result.newTier.minXP));
           recordExerciseResult(EXERCISE_ZONE_CODE_LAB, true, {
             topicKey: topicProgressKey,
           });
@@ -726,6 +731,7 @@ function NumpyExercisesContent() {
         levelUpTier={xpToast?.levelUpTier}
         onDone={() => setXpToast(null)}
       />
+      <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />
     </main>
   );
 }
