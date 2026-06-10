@@ -195,7 +195,7 @@ function NumpyExercisesContent() {
       setSeenMcqPrompts((prev) =>
         prev.includes(fallback.prompt) ? prev : [...prev, fallback.prompt],
       );
-      setMcqError("Using fallback question (API unavailable or invalid response).");
+      setMcqError("question from local bank");
     } finally {
       setMcqLoading(false);
     }
@@ -373,7 +373,7 @@ function NumpyExercisesContent() {
         hint: fallback.hint,
       });
       setCodeInput(MINIMAL_STARTER_CODE);
-      setCodeError("Using curated challenge (API unavailable or invalid response).");
+      setCodeError(null);
     } finally {
       setCodeLoading(false);
     }
@@ -624,7 +624,7 @@ function NumpyExercisesContent() {
               Miss a topic and the next question targets your weak areas; difficulty shifts with
               your session accuracy.
             </p>
-            {mcqError && <p className="mt-2 text-sm text-amber-700">{mcqError}</p>}
+            {mcqError && <p className="mt-2 text-xs text-slate-400">{mcqError}</p>}
             {mcqLoading && <p className="mt-4 text-slate-600">Loading question…</p>}
             {!mcqLoading && mcq && (
               <div className="mt-4">
@@ -680,7 +680,7 @@ function NumpyExercisesContent() {
               Fail a challenge and the next one reinforces that topic at an easier level. Set{" "}
               <code className="rounded bg-slate-100 px-1">answer</code> and run real Python.
             </p>
-            {codeError && <p className="mt-2 text-sm text-amber-700">{codeError}</p>}
+            {codeError && <p className="mt-2 text-xs text-slate-400">{codeError}</p>}
             {pyodideLoading && <p className="mt-2 text-sm text-amber-800">Loading Python…</p>}
             {pyodideError && <p className="mt-2 text-sm text-red-700">{pyodideError}</p>}
             {codeLoading && <p className="mt-4 text-slate-600">Loading challenge…</p>}
