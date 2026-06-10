@@ -209,6 +209,85 @@ function formatOutcome(
   };
 }
 
+/** Extract the first balanced `np.array(...)` literal from an assert string. */
+function extractNpArrayLiteral(assert: string): string | null {
+  const marker = "np.array(";
+  const start = assert.indexOf(marker);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start + marker.length - 1; i < assert.length; i++) {
+    const ch = assert[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) return assert.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Clean up a grading message so it never falsely accuses the learner of
+ * hard-coding (most failures are just a wrong answer) and never references a
+ * source variable we inlined away. We keep the operation hint and drop the
+ * scolding clause.
+ */
+function neutralizeMessage(message: string, sourceVars: string[]): string {
+  let m = message ?? "";
+  // Drop scolding clauses like "— don't hard-code [40, 50]." or "- do not type it".
+  m = m.replace(/\s*[—–-]\s*(don'?t|do not|avoid|never|no)\b.*$/i, "");
+  for (const v of sourceVars) {
+    m = m.replace(new RegExp("`" + v + "\\.(\\w+)`", "g"), "the array's $1");
+    m = m.replace(new RegExp("`" + v + "`", "g"), "the array");
+  }
+  // Strip any leftover "hard-code" wording just in case.
+  m = m.replace(/\s*\b(don'?t|do not)\b[^.]*\bhard-?code\b[^.]*\.?/i, "");
+  m = m.replace(/\s{2,}/g, " ").trim();
+  return m.length >= 3 ? m : "That's not the expected result yet — check your operation.";
+}
+
+/**
+ * Rewrite checks so grading only ever reads `answer`.
+ *
+ * Authored/generated checks often verify a named source array (e.g. `a`) and
+ * then derive the result from it (`a[1:4]`). But the learner is only told to
+ * set `answer`, never to name their array `a`, so a correct solution that uses
+ * a different variable name fails. Here we:
+ *   1. find source checks (capture is a non-`answer` variable holding an array literal),
+ *   2. inline that literal wherever the variable appears in the other checks,
+ *   3. drop the source-existence checks,
+ *   4. neutralize messages so they don't falsely accuse hard-coding.
+ * The expected value stays a computation (e.g. `np.array([10,20,30])[1:4]`),
+ * so nothing is hard-coded — it just no longer depends on the learner's names.
+ */
+export function selfContainChecks(checks: CodeChallengeCheck[]): CodeChallengeCheck[] {
+  const sourceLiterals = new Map<string, string>();
+  const sourceCheckIds = new Set<string>();
+
+  for (const c of checks) {
+    const v = c.capture;
+    if (!v || v === "answer") continue;
+    const literal = extractNpArrayLiteral(c.assert);
+    if (literal) {
+      sourceLiterals.set(v, literal);
+      sourceCheckIds.add(c.id);
+    }
+  }
+
+  const sourceVars = [...sourceLiterals.keys()];
+  const rewritten: CodeChallengeCheck[] = [];
+  for (const c of checks) {
+    if (sourceCheckIds.has(c.id)) continue;
+    let assert = c.assert;
+    for (const [v, literal] of sourceLiterals) {
+      assert = assert.replace(new RegExp(`\\b${v}\\b`, "g"), `(${literal})`);
+    }
+    rewritten.push({ ...c, assert, message: neutralizeMessage(c.message, sourceVars) });
+  }
+
+  return rewritten.length > 0 ? rewritten : checks;
+}
+
 /**
  * Run learner code in an isolated Python namespace and evaluate checks there.
  * All code-challenge surfaces should call this instead of `repr(answer)` + string compare.
@@ -217,7 +296,7 @@ export async function runAndValidateChallenge(
   code: string,
   spec: CodeChallengeSpec,
 ): Promise<ChallengeRunOutcome> {
-  const checks = resolveChallengeChecks(spec);
+  const checks = selfContainChecks(resolveChallengeChecks(spec));
   const result = await validatePythonInWorker(code, toWorkerChecks(checks));
   return formatOutcome(spec, result);
 }

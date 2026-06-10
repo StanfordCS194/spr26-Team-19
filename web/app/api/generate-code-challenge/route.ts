@@ -61,6 +61,7 @@ Rules:
 - Example prompt: "Build a 1D array from 5, 15, 25, and 35. Set answer to the element at index 2."
 - Never use "the middle element" on even-length arrays (4 values has no single middle) — use an index or "two middle elements".
 - Exactly 2 checks: (1) source exists with expected values (2) answer derived from source.
+- Check "message": describe what \`answer\` should be (e.g. "answer should be the last two elements"). Do NOT accuse the learner of hard-coding — a wrong answer is just wrong.
 - Vary numbers from any reference exercise.
 - starterCode: import numpy as np
 `;
