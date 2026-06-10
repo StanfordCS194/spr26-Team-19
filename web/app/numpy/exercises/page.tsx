@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
+import { CodeTutorChat } from "@/components/code-tutor-chat";
 import {
   awardXPWithResult,
   XP_AWARD,
@@ -242,7 +243,6 @@ function NumpyExercisesContent() {
   /** XP / progress for the current challenge are granted at most once. */
   const codeRewardClaimedRef = useRef(false);
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
   /** Saved (bookmarked) problems for the current account. */
   const savedProblems = useSyncExternalStore(
     subscribeSavedProblems,
@@ -374,7 +374,7 @@ function NumpyExercisesContent() {
       id: saved.id,
       topic: saved.topic,
       prompt: saved.prompt,
-      starterCode: saved.starterCode ?? FALLBACK_CODE.starterCode,
+      starterCode: saved.starterCode ?? MINIMAL_STARTER_CODE,
       expectedOutputs: saved.expectedOutputs,
       checks: saved.checks,
       hint: saved.hint,
@@ -687,6 +687,15 @@ function NumpyExercisesContent() {
                     {runMessage}
                   </p>
                 )}
+                <CodeTutorChat
+                  challenge={{
+                    id: challenge.id,
+                    topic: challenge.topic,
+                    prompt: challenge.prompt,
+                    hint: challenge.hint,
+                  }}
+                  learnerCode={codeInput}
+                />
               </div>
             )}
           </section>

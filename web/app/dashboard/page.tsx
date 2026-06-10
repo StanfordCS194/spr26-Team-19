@@ -9,6 +9,7 @@ import {
   removeSavedProblem,
   subscribeSavedProblems,
 } from "@/lib/numpy-saved-problems";
+import {
   getXPServerSnapshot,
   getXPSnapshot,
   getTierForXP,
@@ -50,6 +51,7 @@ export default function DashboardPage() {
     subscribeSavedProblems,
     getSavedProblemsSnapshot,
     getSavedProblemsServerSnapshot,
+  );
   const [placementLevel, setPlacementLevel] = useState<string | null>(null);
 
   const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
