@@ -117,7 +117,51 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .adapted-pop-in,
   .adapted-fade-in,
-  .adapted-confetti {
+  .adapted-confetti,
+  .adapted-xp-shimmer,
+  .adapted-tier-pulse {
     animation: none;
   }
+}
+
+/* ── XP bar shimmer ───────────────────────────────────────────────────── */
+/*
+ * A sweep of semi-transparent white light that travels left-to-right
+ * across the filled portion of the XP progress bar, giving it a living
+ * feel instead of a static fill.  Applied via the .adapted-xp-shimmer
+ * class on the bar's inner <div>.
+ */
+@keyframes adapted-xp-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.adapted-xp-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    theme(colors.pink.500) 0%,
+    theme(colors.sky.400) 40%,
+    rgba(255, 255, 255, 0.55) 50%,
+    theme(colors.sky.400) 60%,
+    theme(colors.pink.500) 100%
+  );
+  background-size: 200% 100%;
+  animation: adapted-xp-shimmer 2.4s ease-in-out infinite;
+}
+
+/* ── Tier level-up pulse ──────────────────────────────────────────────── */
+/*
+ * A brief scale + glow pulse played on the tier badge icon when the user
+ * crosses a tier boundary.  Attach .adapted-tier-pulse dynamically via
+ * React state and remove it after the animation ends (animationend event).
+ */
+@keyframes adapted-tier-pulse {
+  0%   { transform: scale(1);    filter: drop-shadow(0 0 0px rgba(236,72,153,0)); }
+  40%  { transform: scale(1.35); filter: drop-shadow(0 0 12px rgba(236,72,153,0.8)); }
+  70%  { transform: scale(0.95); filter: drop-shadow(0 0 6px rgba(14,165,233,0.6)); }
+  100% { transform: scale(1);    filter: drop-shadow(0 0 0px rgba(236,72,153,0)); }
+}
+
+.adapted-tier-pulse {
+  animation: adapted-tier-pulse 0.7s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
 }

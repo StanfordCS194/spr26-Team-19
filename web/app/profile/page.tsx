@@ -164,7 +164,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-pink-500 to-sky-500 transition-all duration-500"
+                      className="adapted-xp-shimmer h-full rounded-full transition-all duration-500"
                       style={{ width: `${xpProgress.pct}%` }}
                     />
                   </div>
