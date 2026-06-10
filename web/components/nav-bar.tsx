@@ -8,6 +8,12 @@ import {
   getPlacementCompletedSnapshot,
   subscribePlacementCompleted,
 } from "@/lib/numpy-placement-storage";
+import {
+  getXPServerSnapshot,
+  getXPSnapshot,
+  getTierForXP,
+  subscribeXP,
+} from "@/lib/xp-store";
  
  type NavItem = {
    href: string;
@@ -44,6 +50,9 @@ export function NavBar() {
     getPlacementCompletedServerSnapshot,
   );
 
+  const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
+  const tier = getTierForXP(xpRecord.total);
+
   // Once a user has taken placement, hide it from the nav (retake lives in profile).
   const items = NAV.filter((item) => item.href !== "/find-my-level" || !placementDone);
 
@@ -54,9 +63,14 @@ export function NavBar() {
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
             <Link
               href={brandHref}
-              className="font-black tracking-tight text-slate-900 hover:opacity-90"
+              className="flex items-center gap-2 font-black tracking-tight text-slate-900 hover:opacity-90"
             >
               AdaptED
+              {xpRecord.total > 0 && (
+                <span title={`${tier.name} · ${xpRecord.total} XP`} className="text-base leading-none">
+                  {tier.icon}
+                </span>
+              )}
             </Link>
 
             <nav className="flex flex-wrap items-center gap-1.5">
