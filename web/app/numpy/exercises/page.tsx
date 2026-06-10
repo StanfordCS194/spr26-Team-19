@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
+import { CodeTutorChat } from "@/components/code-tutor-chat";
 import {
   awardXPWithResult,
   XP_AWARD,
@@ -706,6 +707,15 @@ function NumpyExercisesContent() {
                     {runMessage}
                   </p>
                 )}
+                <CodeTutorChat
+                  challenge={{
+                    id: challenge.id,
+                    topic: challenge.topic,
+                    prompt: challenge.prompt,
+                    hint: challenge.hint,
+                  }}
+                  learnerCode={codeInput}
+                />
               </div>
             )}
           </section>
