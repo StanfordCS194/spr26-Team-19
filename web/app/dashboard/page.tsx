@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
+  getSavedProblemsServerSnapshot,
+  getSavedProblemsSnapshot,
+  removeSavedProblem,
+  subscribeSavedProblems,
+} from "@/lib/numpy-saved-problems";
   getXPServerSnapshot,
   getXPSnapshot,
   getTierForXP,
@@ -41,6 +46,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const savedProblems = useSyncExternalStore(
+    subscribeSavedProblems,
+    getSavedProblemsSnapshot,
+    getSavedProblemsServerSnapshot,
   const [placementLevel, setPlacementLevel] = useState<string | null>(null);
 
   const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
@@ -246,6 +255,52 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {/* Saved problems */}
+          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/50 p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-slate-900">★ Saved problems</h2>
+              <span className="text-xs text-slate-500">{savedProblems.length} saved</span>
+            </div>
+            {savedProblems.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600">
+                Bookmark a code task with{" "}
+                <span className="font-medium text-amber-700">☆ Save problem</span> in the{" "}
+                <Link href="/numpy/exercises?tab=code" className="font-medium text-sky-700 hover:underline">
+                  code lab
+                </Link>{" "}
+                and it&apos;ll show up here to revisit.
+              </p>
+            ) : (
+              <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                {savedProblems.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-start justify-between gap-3 rounded-xl border border-white/80 bg-white/80 p-3 shadow-sm"
+                  >
+                    <Link
+                      href={`/numpy/exercises?saved=${encodeURIComponent(p.id)}`}
+                      className="group min-w-0 flex-1"
+                    >
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">
+                        {p.topic}
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-sm text-slate-800 group-hover:text-sky-700">
+                        {p.prompt}
+                      </p>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => removeSavedProblem(p.id)}
+                      aria-label="Remove saved problem"
+                      className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {/* Resume card — shown when placement is done and there's an active unit */}
           {placementDone && resumeStop && (
             <Link

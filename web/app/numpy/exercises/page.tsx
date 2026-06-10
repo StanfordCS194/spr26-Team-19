@@ -37,6 +37,13 @@ import { runAndValidateChallenge, type CodeChallengeCheck } from "@/lib/numpy-co
 import { slugifyTopic } from "@/lib/numpy-learning-path";
 import { loadNumpyPlacement, type NumpyPlacementPayload } from "@/lib/numpy-placement-storage";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
+import {
+  findSavedProblem,
+  getSavedProblemsServerSnapshot,
+  getSavedProblemsSnapshot,
+  subscribeSavedProblems,
+  toggleSavedProblem,
+} from "@/lib/numpy-saved-problems";
 import { pickCuratedCodeChallenge } from "@/lib/numpy-code-challenge-quality";
 import { pickRotatingCodeLesson } from "@/lib/numpy-code-topics";
 import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
@@ -98,6 +105,7 @@ function NumpyExercisesContent() {
   useEffect(() => {
     setPlacement(loadNumpyPlacement());
     const t = searchParams.get("tab");
+    if (t === "code" || searchParams.get("saved")) setTab("code");
     if (t === "mcq") setTab("mcq");
   }, [searchParams]);
 
@@ -234,6 +242,16 @@ function NumpyExercisesContent() {
   /** XP / progress for the current challenge are granted at most once. */
   const codeRewardClaimedRef = useRef(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeInput, setCodeInput] = useState(FALLBACK_CODE.starterCode);
+  /** Saved (bookmarked) problems for the current account. */
+  const savedProblems = useSyncExternalStore(
+    subscribeSavedProblems,
+    getSavedProblemsSnapshot,
+    getSavedProblemsServerSnapshot,
+  );
+  const isCurrentSaved = !!challenge && savedProblems.some((p) => p.id === challenge.id);
+  /** Open at most one saved problem from a ?saved=<id> deep link. */
+  const openedSavedRef = useRef(false);
   const [seenCodePrompts, setSeenCodePrompts] = useState<string[]>([]);
   const [codeInput, setCodeInput] = useState(MINIMAL_STARTER_CODE);
   const [runStatus, setRunStatus] = useState<"idle" | "running" | "pass" | "fail">("idle");
@@ -349,9 +367,48 @@ function NumpyExercisesContent() {
     codeSessionCorrect,
   ]);
 
+  const openSavedProblem = useCallback((id: string): boolean => {
+    const saved = findSavedProblem(id);
+    if (!saved) return false;
+    const ch: CodeChallenge = {
+      id: saved.id,
+      topic: saved.topic,
+      prompt: saved.prompt,
+      starterCode: saved.starterCode ?? FALLBACK_CODE.starterCode,
+      expectedOutputs: saved.expectedOutputs,
+      checks: saved.checks,
+      hint: saved.hint,
+    };
+    setChallenge(ch);
+    setCodeInput(ch.starterCode);
+    setRunStatus("idle");
+    setRunMessage("");
+    setCodeError(null);
+    return true;
+  }, []);
+
   useEffect(() => {
-    if (tab === "code" && !challenge && !codeLoading) void loadCodeChallenge();
-  }, [tab, challenge, codeLoading, loadCodeChallenge]);
+    if (tab !== "code" || challenge || codeLoading) return;
+    const savedId = searchParams.get("saved");
+    if (savedId && !openedSavedRef.current) {
+      openedSavedRef.current = true;
+      if (openSavedProblem(savedId)) return;
+    }
+    void loadCodeChallenge();
+  }, [tab, challenge, codeLoading, loadCodeChallenge, openSavedProblem, searchParams]);
+
+  function toggleSaveCurrent() {
+    if (!challenge) return;
+    toggleSavedProblem({
+      id: challenge.id,
+      topic: challenge.topic,
+      prompt: challenge.prompt,
+      hint: challenge.hint,
+      starterCode: challenge.starterCode,
+      checks: challenge.checks,
+      expectedOutputs: challenge.expectedOutputs,
+    });
+  }
 
   async function runCode() {
     if (!canRun || !challenge) return;
@@ -607,6 +664,18 @@ function NumpyExercisesContent() {
                     className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-800 hover:bg-slate-50"
                   >
                     New challenge
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleSaveCurrent}
+                    aria-pressed={isCurrentSaved}
+                    className={`ml-auto rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                      isCurrentSaved
+                        ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {isCurrentSaved ? "★ Saved" : "☆ Save problem"}
                   </button>
                 </div>
                 {runMessage && (
