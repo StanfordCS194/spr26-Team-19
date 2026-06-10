@@ -72,7 +72,7 @@ const FALLBACK_MCQ: DrillMcq = {
 function NumpyExercisesContent() {
   const searchParams = useSearchParams();
   const [placement, setPlacement] = useState<NumpyPlacementPayload | null>(null);
-  const [tab, setTab] = useState<"mcq" | "code">("mcq");
+  const [tab, setTab] = useState<"mcq" | "code">("code");
 
   const focusHint = useMemo(() => {
     const q = searchParams.get("focus")?.trim();
@@ -87,7 +87,7 @@ function NumpyExercisesContent() {
   useEffect(() => {
     setPlacement(loadNumpyPlacement());
     const t = searchParams.get("tab");
-    if (t === "code") setTab("code");
+    if (t === "mcq") setTab("mcq");
   }, [searchParams]);
 
   const progress = useSyncExternalStore(
@@ -451,24 +451,24 @@ function NumpyExercisesContent() {
           </div>
         </div>
 
-        <div className="mt-6 flex gap-2 border-b border-slate-200 pb-2">
+        <div className="mt-6 flex items-center gap-2 border-b border-slate-200 pb-2">
           <button
             type="button"
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === "mcq" ? "bg-sky-600 text-white" : "text-slate-700 hover:bg-slate-100"
-            }`}
-            onClick={() => setTab("mcq")}
-          >
-            MCQ drill
-          </button>
-          <button
-            type="button"
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${
               tab === "code" ? "bg-sky-600 text-white" : "text-slate-700 hover:bg-slate-100"
             }`}
             onClick={() => setTab("code")}
           >
             Code lab
+          </button>
+          <button
+            type="button"
+            className={`rounded-lg px-3 py-2 text-sm font-medium ${
+              tab === "mcq" ? "bg-slate-700 text-white" : "text-slate-500 hover:bg-slate-100"
+            }`}
+            onClick={() => setTab("mcq")}
+          >
+            Quick concept check
           </button>
         </div>
 

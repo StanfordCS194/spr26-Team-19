@@ -37,8 +37,8 @@ type AnsweredQuestion = PlacementQuestion & { //Added to track user answer for a
 };
 
 // MCQ count + short code tasks (see placementCodingChallenges) make up the full placement.
-const TOTAL_MCQ = 8;
-const TOTAL_CODE = 2;
+const TOTAL_MCQ = 4;
+const TOTAL_CODE = 4;
 
 type PlacementCodingChallenge = {
   id: string;
@@ -78,6 +78,30 @@ const placementCodingChallenges: PlacementCodingChallenge[] = [
     starterCode: MINIMAL_STARTER_CODE,
     expectedOutputs: ["array([18,10,2])"],
     hint: "There is a dedicated way to read the main diagonal; afterward you are doing element-wise math on a 1D array, then reversing index order.",
+  },
+  {
+    id: "placement-slice-sum",
+    topic: "slicing",
+    difficulty: "easy",
+    prompt: `Build a 1D array with values 5, 10, 15, 20, 25, and 30.
+
+1) Slice out the middle four values (10, 15, 20, 25).
+2) Set \`answer\` to the sum of that slice.`,
+    starterCode: MINIMAL_STARTER_CODE,
+    expectedOutputs: ["np.int64(70)", "70"],
+    hint: "A slice keeps the start index and stops before the end index; then reduce the slice to one number.",
+  },
+  {
+    id: "placement-mean-of-evens",
+    topic: "boolean indexing",
+    difficulty: "medium",
+    prompt: `Build a 1D array with values 3, 8, 5, 12, 7, and 6.
+
+1) Keep only the even values using a boolean mask.
+2) Set \`answer\` to the mean of those even values.`,
+    starterCode: MINIMAL_STARTER_CODE,
+    expectedOutputs: ["np.float64(8.666666666666666)", "8.666666666666666"],
+    hint: "A comparison like values % 2 == 0 builds a mask; index with it, then take the mean.",
   },
 ];
 
