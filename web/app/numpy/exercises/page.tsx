@@ -5,7 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ExerciseProgressRing } from "@/components/exercise-progress-ring";
 import { XPToast } from "@/components/xp-toast";
+import { BadgeToast } from "@/components/badge-toast";
 import { CodeTutorChat } from "@/components/code-tutor-chat";
+import { checkTierBadge, tryAwardBadge, type Badge } from "@/lib/achievements";
 import {
   awardXPWithResult,
   XP_AWARD,
@@ -136,6 +138,7 @@ function NumpyExercisesContent() {
   const [mcqSelected, setMcqSelected] = useState<number | null>(null);
   const [seenMcqPrompts, setSeenMcqPrompts] = useState<string[]>([]);
   const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+  const [badgeToast, setBadgeToast] = useState<Badge | null>(null);
 
   const xpRecord = useSyncExternalStore(subscribeXP, getXPSnapshot, getXPServerSnapshot);
   const tier = getTierForXP(xpRecord.total);
@@ -192,7 +195,7 @@ function NumpyExercisesContent() {
       setSeenMcqPrompts((prev) =>
         prev.includes(fallback.prompt) ? prev : [...prev, fallback.prompt],
       );
-      setMcqError("Using fallback question (API unavailable or invalid response).");
+      setMcqError("question from local bank");
     } finally {
       setMcqLoading(false);
     }
@@ -221,6 +224,7 @@ function NumpyExercisesContent() {
         amount: XP_AWARD.mcq_correct,
         ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
       });
+      setBadgeToast((prev) => prev ?? tryAwardBadge("first-correct") ?? checkTierBadge(result.newTier.minXP));
     } else {
       setTopicMistakes((prev) => ({
         ...prev,
@@ -235,6 +239,20 @@ function NumpyExercisesContent() {
   function onMcqNext() {
     void loadMcq();
   }
+
+  // Keyboard nav: 1–4 to select, Enter to load next question
+  useEffect(() => {
+    if (tab !== "mcq") return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Enter" && mcqSelected !== null) { onMcqNext(); return; }
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 4 && mcqSelected === null) onMcqPick(n - 1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // deps: tab + mcqSelected so the handler sees fresh state
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, mcqSelected]);
 
   /* —— Code lab —— */
   const [challenge, setChallenge] = useState<CodeChallenge | null>(null);
@@ -321,93 +339,10 @@ function NumpyExercisesContent() {
         recentLessonIds: seenCodeLessonIdsRef.current,
         rotationIndex: codeRotationRef.current,
       });
-      codeRotationRef.current += 1;
-      seenCodeLessonIdsRef.current = [...seenCodeLessonIdsRef.current.slice(-8), lesson.id];
-      return lesson;
-    },
-    [placement, searchParams],
-  );
-
-  const fetchGeneratedChallenge = useCallback(
-    async (
-      lessonId: string,
-      focus: string,
-      difficulty: DrillDifficulty,
-      reinforceTopic: string | null,
-    ): Promise<CodeChallenge | null> => {
-      try {
-        const res = await fetch("/api/generate-code-challenge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            difficulty,
-            lessonId,
-            focusTopic: focus,
-            reinforceWeakTopic: reinforceTopic ?? undefined,
-            seenPrompts: seenCodePromptsRef.current,
-          }),
-        });
-        if (!res.ok) return null;
-        const data = (await res.json()) as Record<string, unknown>;
-        return buildChallengeFromData(data);
-      } catch {
-        return null;
-      }
-    },
-    [buildChallengeFromData],
-  );
-
-  const curatedToChallenge = useCallback((focus: string): CodeChallenge => {
-    const fb = pickCuratedCodeChallenge(focus);
-    return {
-      id: fb.id,
-      topic: fb.topic,
-      prompt: fb.prompt,
-      starterCode: MINIMAL_STARTER_CODE,
-      checks: fb.checks,
-      hint: fb.hint,
-    };
-  }, []);
-
-  const applyChallenge = useCallback((ch: CodeChallenge, difficulty: DrillDifficulty) => {
-    codeAttemptRef.current = 0;
-    codeRewardClaimedRef.current = false;
-    setDrillDifficulty(difficulty);
-    setChallenge(ch);
-    setCodeInput(MINIMAL_STARTER_CODE);
-    setRunStatus("idle");
-    setRunMessage("");
-    setCodeError(null);
-    setCodeLoading(false);
-    setSeenCodePrompts((prev) => (prev.includes(ch.prompt) ? prev : [...prev, ch.prompt]));
-  }, []);
-
-  // Generate the *next* challenge in the background so "New challenge" is instant.
-  const startCodePrefetch = useCallback(() => {
-    if (prefetchInFlightRef.current || prefetchedChallengeRef.current) return;
-    prefetchInFlightRef.current = true;
-    const difficulty = difficultyFromSession(codeSessionAttempted, codeSessionCorrect);
-    const lesson = pickNextCodeLesson(null);
-    void fetchGeneratedChallenge(lesson.id, lesson.focus, difficulty, null).then((ch) => {
-      prefetchedChallengeRef.current = ch;
-      prefetchInFlightRef.current = false;
-    });
-  }, [
-    fetchGeneratedChallenge,
-    pickNextCodeLesson,
-    codeSessionAttempted,
-    codeSessionCorrect,
-  ]);
-
-  const loadCodeChallenge = useCallback(() => {
-    const reinforce = reinforceTopicRef.current;
-    reinforceTopicRef.current = null;
-
-    // After a miss: an instant, topic-matched curated challenge at easy difficulty.
-    if (reinforce) {
-      applyChallenge(curatedToChallenge(reinforce), "easy");
-      startCodePrefetch();
-      return;
+      setCodeInput(MINIMAL_STARTER_CODE);
+      setCodeError(null);
+    } finally {
+      setCodeLoading(false);
     }
 
     // A generated challenge prepared in the background → show it instantly.
@@ -508,6 +443,7 @@ function NumpyExercisesContent() {
             amount: XP_AWARD[eventType],
             ...(result.leveledUp ? { levelUpTier: result.newTier } : {}),
           });
+          setBadgeToast((prev) => prev ?? tryAwardBadge("first-code") ?? checkTierBadge(result.newTier.minXP));
           recordExerciseResult(EXERCISE_ZONE_CODE_LAB, true, {
             topicKey: topicProgressKey,
           });
@@ -605,11 +541,39 @@ function NumpyExercisesContent() {
                   </div>
                 </div>
               )}
+              {/* All-time vs this-session breakdown */}
               <p className="text-xs text-slate-400">
-                {summary.totalAttempted} attempts · {summary.totalCorrect} correct
+                All time: {summary.totalAttempted} attempts · {summary.totalCorrect} correct
               </p>
+              {(mcqSessionAttempted + codeSessionAttempted) > 0 && (
+                <p className="text-xs font-medium text-sky-600">
+                  This session: {mcqSessionCorrect + codeSessionCorrect}/{mcqSessionAttempted + codeSessionAttempted} correct
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Weak topics this session */}
+          {Object.keys(topicMistakes).length > 0 && (
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                Topics to review this session
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(topicMistakes)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5)
+                  .map(([topic, count]) => (
+                    <span
+                      key={topic}
+                      className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                    >
+                      {topic} · {count} miss{count > 1 ? "es" : ""}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center gap-2 border-b border-slate-200 pb-2">
@@ -645,7 +609,7 @@ function NumpyExercisesContent() {
               Miss a topic and the next question targets your weak areas; difficulty shifts with
               your session accuracy.
             </p>
-            {mcqError && <p className="mt-2 text-sm text-amber-700">{mcqError}</p>}
+            {mcqError && <p className="mt-2 text-xs text-slate-400">{mcqError}</p>}
             {mcqLoading && <p className="mt-4 text-slate-600">Loading question…</p>}
             {!mcqLoading && mcq && (
               <div className="mt-4">
@@ -701,7 +665,7 @@ function NumpyExercisesContent() {
               Fail a challenge and the next one reinforces that topic at an easier level. Set{" "}
               <code className="rounded bg-slate-100 px-1">answer</code> and run real Python.
             </p>
-            {codeError && <p className="mt-2 text-sm text-amber-700">{codeError}</p>}
+            {codeError && <p className="mt-2 text-xs text-slate-400">{codeError}</p>}
             {pyodideLoading && <p className="mt-2 text-sm text-amber-800">Loading Python…</p>}
             {pyodideError && <p className="mt-2 text-sm text-red-700">{pyodideError}</p>}
             {codeLoading && <p className="mt-4 text-slate-600">Loading challenge…</p>}
@@ -774,6 +738,7 @@ function NumpyExercisesContent() {
         levelUpTier={xpToast?.levelUpTier}
         onDone={() => setXpToast(null)}
       />
+      <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />
     </main>
   );
 }

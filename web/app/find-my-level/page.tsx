@@ -8,6 +8,8 @@ import { canonicalizeTopic } from "@/lib/numpy-learning-path";
 import { saveNumpyPlacement } from "@/lib/numpy-placement-storage";
 import { awardXPWithResult, XP_AWARD } from "@/lib/xp-store";
 import { XPToast } from "@/components/xp-toast";
+import { BadgeToast } from "@/components/badge-toast";
+import { checkStreakBadge, checkTierBadge, tryAwardBadge, type Badge } from "@/lib/achievements";
 import { runAndValidateChallenge } from "@/lib/numpy-code-validate";
 import { ensurePyodideWorker } from "@/lib/pyodide-web-worker";
 import { MINIMAL_STARTER_CODE } from "@/lib/numpy-starter-code";
@@ -393,6 +395,7 @@ export default function FindMyLevelPage() {
   const [pyodideError, setPyodideError] = useState("");
   const canRunPython = !pyodideLoading && !pyodideError;
   const [xpToast, setXpToast] = useState<{ amount: number; levelUpTier?: { name: string; icon: string } } | null>(null);
+  const [badgeToast, setBadgeToast] = useState<Badge | null>(null);
 
   const question = currentQuestion; // Alias for readability in JSX.
   const hasAnswered = selected !== null;
@@ -418,6 +421,25 @@ export default function FindMyLevelPage() {
       cancelled = true;
     };
   }, []);
+
+  // Keyboard shortcuts: 1-4 selects an answer, Enter advances after answering
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (phase !== "mcq") return;
+      if (e.key === "Enter" && hasAnswered) {
+        if (!isLastQuestion) handleNext();
+        else moveToCodingStage();
+        return;
+      }
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 4 && !hasAnswered) {
+        handleSelect(num - 1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, hasAnswered, isLastQuestion, index]);
 
   function getWeakTopics() {
     const merged = new Map<string, number>();
@@ -560,6 +582,8 @@ export default function FindMyLevelPage() {
       setMcqScore((prev) => prev + 1);
       const r = awardXPWithResult("mcq_correct");
       setXpToast({ amount: XP_AWARD.mcq_correct, ...(r.leveledUp ? { levelUpTier: r.newTier } : {}) });
+      // First-correct badge + tier/streak checks
+      setBadgeToast((prev) => prev ?? tryAwardBadge("first-correct") ?? checkTierBadge(r.newTier.minXP) ?? checkStreakBadge(0));
     } else {
       setTopicMistakes((prev) => ({
         ...prev,
@@ -658,12 +682,14 @@ export default function FindMyLevelPage() {
               amount: XP_AWARD.code_first_try,
               ...(r1.leveledUp ? { levelUpTier: r1.newTier } : {}),
             });
+            setBadgeToast((prev) => prev ?? tryAwardBadge("first-code") ?? checkTierBadge(r1.newTier.minXP));
           } else {
             const r2 = awardXPWithResult("code_pass");
             setXpToast({
               amount: XP_AWARD.code_pass,
               ...(r2.leveledUp ? { levelUpTier: r2.newTier } : {}),
             });
+            setBadgeToast((prev) => prev ?? checkTierBadge(r2.newTier.minXP));
           }
         }
       } else if (attemptsSoFar === 0) {
@@ -727,6 +753,7 @@ export default function FindMyLevelPage() {
     });
     const rp = awardXPWithResult("placement_complete");
     setXpToast({ amount: XP_AWARD.placement_complete, ...(rp.leveledUp ? { levelUpTier: rp.newTier } : {}) });
+    setBadgeToast((prev) => prev ?? tryAwardBadge("placed") ?? checkTierBadge(rp.newTier.minXP));
     setCompletion({
       level,
       mcqScore,
@@ -785,17 +812,31 @@ export default function FindMyLevelPage() {
 
         {phase === "mcq" && (
           <>
-            <p className="mt-3 text-xs text-slate-400">
-              {isPrefetchingMcq
-                ? "Preparing next question…"
-                : mcqGenerationStatus === "generated"
-                  ? "AI-generated question"
-                  : mcqGenerationStatus === "fallback"
-                    ? "Fallback question"
-                    : ""}
-            </p>
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-slate-400">
+                {isPrefetchingMcq
+                  ? "Preparing next question…"
+                  : mcqGenerationStatus === "generated"
+                    ? "AI-generated question"
+                    : mcqGenerationStatus === "fallback"
+                      ? "Fallback question"
+                      : ""}
+              </p>
+              <p className="text-xs text-slate-300">Press 1–4 to select · Enter to continue</p>
+            </div>
 
-            <h2 className="mt-6 text-xl font-semibold text-gray-900">{question.prompt}</h2>
+            {/* Difficulty badge — shows the adaptive level for this question */}
+            <div className="mt-6 flex items-center gap-2">
+              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
+                question.difficulty === "hard"   ? "bg-red-100 text-red-700" :
+                question.difficulty === "medium" ? "bg-amber-100 text-amber-700" :
+                                                   "bg-sky-100 text-sky-700"
+              }`}>
+                {question.difficulty}
+              </span>
+              <span className="text-xs text-slate-400">{question.topic}</span>
+            </div>
+            <h2 className="mt-2 text-xl font-semibold text-gray-900">{question.prompt}</h2>
 
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {!showHint ? (
@@ -963,7 +1004,13 @@ export default function FindMyLevelPage() {
         open={completion !== null}
         emoji="🏆"
         title="Placement complete!"
-        message="Nice work — here’s where you landed. Your personalized path is ready."
+        message={
+          completion?.level === "Advanced"
+            ? "Strong performance — you’re placed at Advanced. Your path starts from the tougher units."
+            : completion?.level === "Intermediate"
+              ? "Solid work — you’re placed at Intermediate. Your path skips the basics and goes right to the good stuff."
+              : "You’re placed at Beginner. Your path starts from the foundations and builds up steadily."
+        }
         highlight={completion ? { label: "Your level", value: completion.level } : undefined}
         stats={
           completion
@@ -976,8 +1023,12 @@ export default function FindMyLevelPage() {
                   label: "Code (first try)",
                   value: `${completion.codeScore} / ${completion.totalCode}`,
                 },
+                {
+                  label: "Overall",
+                  value: `${Math.round(((completion.mcqScore + completion.codeScore) / (completion.totalMcq + completion.totalCode)) * 100)}%`,
+                },
                 ...(completion.recommendedTopic
-                  ? [{ label: "Start with", value: completion.recommendedTopic }]
+                  ? [{ label: "Focus topic", value: completion.recommendedTopic }]
                   : []),
               ]
             : undefined
@@ -989,6 +1040,7 @@ export default function FindMyLevelPage() {
         secondaryAction={{ label: "Go to dashboard", href: "/dashboard" }}
       />
       <XPToast amount={xpToast?.amount ?? null} levelUpTier={xpToast?.levelUpTier} onDone={() => setXpToast(null)} />
+      <BadgeToast badge={badgeToast} onDone={() => setBadgeToast(null)} />
     </main>
   );
 }
