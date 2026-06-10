@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CURATED_CODE_CHALLENGES } from "@/lib/numpy-code-challenge-quality";
+import { allCurriculumCodeChallenges } from "@/lib/numpy-code-topics";
 import {
   auditCuratedBanks,
   referenceSolutionFor,
@@ -39,12 +40,15 @@ const STATUS_STYLE: Record<SolveStatus, string> = {
   fail: "bg-rose-100 text-rose-800",
 };
 
+// The full graded pool: curated fallback bank + curriculum practice exercises.
+const ALL_CHALLENGES = [...CURATED_CODE_CHALLENGES, ...allCurriculumCodeChallenges()];
+
 export default function BankCheckPage() {
   // Pure, module-data-only computations — safe as lazy initializers (no
   // setState-in-effect needed, runs once on first render).
   const [audit] = useState<BankAuditReport>(() => auditCuratedBanks());
   const [rows, setRows] = useState<SolveRow[]>(() =>
-    CURATED_CODE_CHALLENGES.map((c) => ({
+    ALL_CHALLENGES.map((c) => ({
       id: c.id,
       topic: c.topic,
       status: "pending",
@@ -56,7 +60,7 @@ export default function BankCheckPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      for (const c of CURATED_CODE_CHALLENGES) {
+      for (const c of ALL_CHALLENGES) {
         if (cancelled) return;
         setRows((prev) =>
           prev.map((r) => (r.id === c.id ? { ...r, status: "running" } : r)),
@@ -99,9 +103,10 @@ export default function BankCheckPage() {
 
   const passCount = rows.filter((r) => r.status === "pass").length;
   const failCount = rows.filter((r) => r.status === "fail").length;
-  const staticIssues = audit?.results.filter((r) => r.issues.length > 0) ?? [];
-  const allGreen =
-    audit?.ok === true && done && failCount === 0 && rows.length > 0;
+  const staticIssues = [...audit.results, ...audit.curriculumResults].filter(
+    (r) => r.issues.length > 0,
+  );
+  const allGreen = audit.ok === true && done && failCount === 0 && rows.length > 0;
 
   return (
     <main className="mx-auto max-w-4xl p-6 md:p-10">
@@ -112,7 +117,8 @@ export default function BankCheckPage() {
         </Link>
       </div>
       <p className="mt-2 text-sm text-slate-600">
-        Static audit + live Pyodide solvability check for every curated coding problem.
+        Static audit + live Pyodide solvability check for every curated fallback
+        problem and curriculum practice exercise.
       </p>
 
       {/* Overall banner */}
@@ -128,7 +134,7 @@ export default function BankCheckPage() {
         {!done
           ? "Running solvability checks in Pyodide…"
           : allGreen
-            ? `All ${rows.length} curated problems pass static audit and solve correctly.`
+            ? `All ${rows.length} problems (curated + curriculum) pass static audit and solve correctly.`
             : `Problems found — ${failCount} solvability failure(s), ${staticIssues.length} static issue(s).`}
       </div>
 

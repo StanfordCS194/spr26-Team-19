@@ -9,9 +9,10 @@
  *     unique ids, ≥2 checks with the required fields, a captured result check,
  *     a non-empty starter + reference solution, and that every problem passes
  *     the SAME `isWeakCodeChallenge` anti-shortcut gate the generator enforces.
- *  2. `REFERENCE_SOLUTIONS` — a known-correct solution per curated id, used by
- *     the `/dev/bank-check` page to execute each problem through the real
- *     Pyodide grader and prove it is solvable and graded correctly.
+ *  2. `REFERENCE_SOLUTIONS` — a known-correct solution per challenge id (both
+ *     the curated bank and the curriculum practice exercises), used by the
+ *     `/dev/bank-check` page to execute each problem through the real Pyodide
+ *     grader and prove it is solvable and graded correctly.
  *
  * Nothing here is imported by the learner-facing app at runtime.
  */
@@ -20,7 +21,10 @@ import {
   isWeakCodeChallenge,
   type CuratedCodeChallenge,
 } from "@/lib/numpy-code-challenge-quality";
-import { allCurriculumCodeChallenges } from "@/lib/numpy-code-topics";
+import {
+  allCurriculumCodeChallenges,
+  type CurriculumCodeChallenge,
+} from "@/lib/numpy-code-topics";
 
 /**
  * Known-correct solution for every curated challenge id. Solutions assign the
@@ -59,6 +63,23 @@ export const REFERENCE_SOLUTIONS: Record<string, string> = {
   "linspace-build": "import numpy as np\nanswer = np.linspace(0, 1, 5)",
   "dot-product":
     "import numpy as np\na = np.array([1, 2, 3])\nb = np.array([4, 5, 6])\nanswer = a.dot(b)",
+  // ── curriculum practice exercises (id is `curriculum-<lessonId>`) ───────────
+  "curriculum-what-is-an-array":
+    "import numpy as np\nanswer = np.array([[1, 2, 3], [4, 5, 6]])",
+  "curriculum-array-fundamentals":
+    "import numpy as np\na = np.array([10, 20, 30, 40])\nanswer = a[0]",
+  "curriculum-array-attributes":
+    "import numpy as np\na = np.array([[1, 2, 3], [4, 5, 6]])\nanswer = a.shape",
+  "curriculum-create-basic-array": "import numpy as np\nanswer = np.arange(2, 10, 2)",
+  "curriculum-reshape": "import numpy as np\na = np.arange(6)\nanswer = a.reshape(3, 2)",
+  "curriculum-new-axis":
+    "import numpy as np\na = np.array([1, 2, 3])\nanswer = a[:, np.newaxis]",
+  "curriculum-indexing-slicing":
+    "import numpy as np\na = np.array([10, 20, 30, 40, 50])\nanswer = a[-2:]",
+  "curriculum-basic-operations":
+    "import numpy as np\nx = np.array([1, 2, 3, 4])\nanswer = x.sum()",
+  "curriculum-creating-matrices":
+    "import numpy as np\nm = np.array([[1, 2], [3, 4], [5, 6]])\nanswer = m[1, 0]",
 };
 
 export function referenceSolutionFor(id: string): string | null {
@@ -78,11 +99,16 @@ export type BankAuditReport = {
   totalCurriculum: number;
   /** Ids that appear more than once across curated + curriculum challenges. */
   duplicateIds: string[];
+  /** Static audit of the hand-authored curated fallback bank. */
   results: ChallengeAuditResult[];
+  /** Static audit of the curriculum lesson practice exercises. */
+  curriculumResults: ChallengeAuditResult[];
 };
 
-/** Static checks for a single curated challenge (no code execution). */
-function auditChallenge(c: CuratedCodeChallenge): ChallengeAuditResult {
+/** Static checks for a single challenge (no code execution). */
+function auditChallenge(
+  c: CuratedCodeChallenge | CurriculumCodeChallenge,
+): ChallengeAuditResult {
   const issues: string[] = [];
 
   if (typeof c.starterCode !== "string" || c.starterCode.trim() === "") {
@@ -118,9 +144,9 @@ function auditChallenge(c: CuratedCodeChallenge): ChallengeAuditResult {
 }
 
 /**
- * Audit the curated bank plus curriculum-derived challenges. Returns a report;
- * `ok` is true only when there are no duplicate ids and every curated challenge
- * passes all static checks.
+ * Audit the curated bank plus the curriculum practice exercises. Returns a
+ * report; `ok` is true only when there are no duplicate ids and every challenge
+ * in BOTH pools passes all static checks.
  */
 export function auditCuratedBanks(): BankAuditReport {
   const curriculum = allCurriculumCodeChallenges();
@@ -133,7 +159,11 @@ export function auditCuratedBanks(): BankAuditReport {
   const duplicateIds = [...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id);
 
   const results = CURATED_CODE_CHALLENGES.map(auditChallenge);
-  const ok = duplicateIds.length === 0 && results.every((r) => r.issues.length === 0);
+  const curriculumResults = curriculum.map(auditChallenge);
+  const ok =
+    duplicateIds.length === 0 &&
+    results.every((r) => r.issues.length === 0) &&
+    curriculumResults.every((r) => r.issues.length === 0);
 
   return {
     ok,
@@ -141,5 +171,6 @@ export function auditCuratedBanks(): BankAuditReport {
     totalCurriculum: curriculum.length,
     duplicateIds,
     results,
+    curriculumResults,
   };
 }
