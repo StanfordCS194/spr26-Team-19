@@ -260,13 +260,32 @@ function neutralizeMessage(message: string, sourceVars: string[]): string {
  * The expected value stays a computation (e.g. `np.array([10,20,30])[1:4]`),
  * so nothing is hard-coded — it just no longer depends on the learner's names.
  */
+/**
+ * Detect a source array variable that a check establishes a value for, reading
+ * the assert text directly so we don't depend on the generator labelling
+ * `capture` correctly (it often mislabels it as `answer`). Returns the variable
+ * name (never `answer`) when the check verifies a named ndarray.
+ */
+function findSourceVar(assert: string): string | null {
+  const iso = /\bisinstance\(\s*([A-Za-z_]\w*)\s*,\s*np\.ndarray\s*\)/.exec(assert);
+  if (iso && iso[1] !== "answer") return iso[1];
+  const eq = /\bnp\.array_equal\(\s*([A-Za-z_]\w*)\s*,\s*np\.array\(/.exec(assert);
+  if (eq && eq[1] !== "answer") return eq[1];
+  const tolist = /\b([A-Za-z_]\w*)\.tolist\(\)\s*==/.exec(assert);
+  if (tolist && tolist[1] !== "answer") return tolist[1];
+  return null;
+}
+
 export function selfContainChecks(checks: CodeChallengeCheck[]): CodeChallengeCheck[] {
   const sourceLiterals = new Map<string, string>();
   const sourceCheckIds = new Set<string>();
 
   for (const c of checks) {
-    const v = c.capture;
-    if (!v || v === "answer") continue;
+    // Trust the assert text over `capture`: the generator frequently labels
+    // every check's capture as `answer`, which hid the source array and made
+    // correct learner answers fail because the inlined variable stayed undefined.
+    const v = findSourceVar(c.assert) ?? (c.capture && c.capture !== "answer" ? c.capture : null);
+    if (!v) continue;
     const literal = extractNpArrayLiteral(c.assert);
     if (literal) {
       sourceLiterals.set(v, literal);
@@ -275,9 +294,27 @@ export function selfContainChecks(checks: CodeChallengeCheck[]): CodeChallengeCh
   }
 
   const sourceVars = [...sourceLiterals.keys()];
+  const nonSource = checks.filter((c) => !sourceCheckIds.has(c.id));
+  const hasAnswerCheck = nonSource.some((c) => /\banswer\b/.test(c.assert));
+
+  // Pure-creation task: the only checks verify a named array (e.g. `a`) and
+  // nothing grades `answer`. The learner was told to set `answer`, so re-target
+  // those checks to `answer` instead of dropping them (which would grade nothing).
+  if (!hasAnswerCheck) {
+    const retargeted = checks
+      .filter((c) => sourceCheckIds.has(c.id))
+      .map((c) => {
+        let assert = c.assert;
+        for (const v of sourceVars) {
+          assert = assert.replace(new RegExp(`\\b${v}\\b`, "g"), "answer");
+        }
+        return { ...c, assert, message: neutralizeMessage(c.message, sourceVars) };
+      });
+    if (retargeted.length > 0) return retargeted;
+  }
+
   const rewritten: CodeChallengeCheck[] = [];
-  for (const c of checks) {
-    if (sourceCheckIds.has(c.id)) continue;
+  for (const c of nonSource) {
     let assert = c.assert;
     for (const [v, literal] of sourceLiterals) {
       assert = assert.replace(new RegExp(`\\b${v}\\b`, "g"), `(${literal})`);
