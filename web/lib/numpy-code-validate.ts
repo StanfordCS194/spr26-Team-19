@@ -214,6 +214,9 @@ function extractNpArrayLiteral(assert: string): string | null {
   const marker = "np.array(";
   const start = assert.indexOf(marker);
   if (start === -1) return null;
+  // Walk forward tracking paren depth so we capture the *matching* close paren,
+  // not the first one — nested arrays like np.array([[1,2],[3,4]]) would break a
+  // naive indexOf(")"). Start the scan on the marker's own "(" so depth starts at 1.
   let depth = 0;
   for (let i = start + marker.length - 1; i < assert.length; i++) {
     const ch = assert[i];
@@ -277,14 +280,18 @@ export function selfContainChecks(checks: CodeChallengeCheck[]): CodeChallengeCh
   const sourceVars = [...sourceLiterals.keys()];
   const rewritten: CodeChallengeCheck[] = [];
   for (const c of checks) {
+    // Drop the source-existence checks entirely — the literal is now inlined.
     if (sourceCheckIds.has(c.id)) continue;
     let assert = c.assert;
     for (const [v, literal] of sourceLiterals) {
+      // \b...\b avoids partial hits (e.g. var `a` shouldn't match inside `answer`).
+      // Wrap the literal in parens so it stays a single operand after substitution.
       assert = assert.replace(new RegExp(`\\b${v}\\b`, "g"), `(${literal})`);
     }
     rewritten.push({ ...c, assert, message: neutralizeMessage(c.message, sourceVars) });
   }
 
+  // Fall back to the originals if we somehow rewrote everything away.
   return rewritten.length > 0 ? rewritten : checks;
 }
 

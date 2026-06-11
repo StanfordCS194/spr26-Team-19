@@ -331,6 +331,8 @@ function NumpyExercisesContent() {
 
   const pickNextCodeLesson = useCallback(
     (reinforceTopic: string | null) => {
+      // Rotation index + recent-id list let the picker cycle the curriculum
+      // instead of repeating whatever topic happens to score highest.
       const lesson = pickRotatingCodeLesson({
         placementRecommended: placement?.recommendedTopic ?? null,
         placementWeak: placement?.weakTopics,
@@ -339,10 +341,106 @@ function NumpyExercisesContent() {
         recentLessonIds: seenCodeLessonIdsRef.current,
         rotationIndex: codeRotationRef.current,
       });
-      setCodeInput(MINIMAL_STARTER_CODE);
-      setCodeError(null);
-    } finally {
-      setCodeLoading(false);
+      codeRotationRef.current += 1;
+      // Keep only the last 8 lesson ids as a short "don't repeat" window.
+      seenCodeLessonIdsRef.current = [...seenCodeLessonIdsRef.current.slice(-8), lesson.id];
+      return lesson;
+    },
+    [placement, searchParams],
+  );
+
+  const fetchGeneratedChallenge = useCallback(
+    async (
+      lessonId: string,
+      focus: string,
+      difficulty: DrillDifficulty,
+      reinforceTopic: string | null,
+    ): Promise<CodeChallenge | null> => {
+      // Returns null (not throws) on any failure so callers can silently fall
+      // back to a curated challenge without breaking the prefetch pipeline.
+      try {
+        const res = await fetch("/api/generate-code-challenge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            difficulty,
+            lessonId,
+            focusTopic: focus,
+            reinforceWeakTopic: reinforceTopic ?? undefined,
+            // Read from the ref (not state) so a background prefetch sees the
+            // freshest "seen" list without this callback re-subscribing.
+            seenPrompts: seenCodePromptsRef.current,
+          }),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as Record<string, unknown>;
+        return buildChallengeFromData(data);
+      } catch {
+        return null;
+      }
+    },
+    [buildChallengeFromData],
+  );
+
+  const curatedToChallenge = useCallback((focus: string): CodeChallenge => {
+    const fb = pickCuratedCodeChallenge(focus);
+    return {
+      id: fb.id,
+      topic: fb.topic,
+      prompt: fb.prompt,
+      starterCode: MINIMAL_STARTER_CODE,
+      checks: fb.checks,
+      hint: fb.hint,
+    };
+  }, []);
+
+  const applyChallenge = useCallback((ch: CodeChallenge, difficulty: DrillDifficulty) => {
+    // Reset per-challenge state: attempt counter and reward latch must start
+    // fresh so the next challenge can award XP on its own first try.
+    codeAttemptRef.current = 0;
+    codeRewardClaimedRef.current = false;
+    setDrillDifficulty(difficulty);
+    setChallenge(ch);
+    setCodeInput(MINIMAL_STARTER_CODE);
+    setRunStatus("idle");
+    setRunMessage("");
+    setCodeError(null);
+    setCodeLoading(false);
+    setSeenCodePrompts((prev) => (prev.includes(ch.prompt) ? prev : [...prev, ch.prompt]));
+  }, []);
+
+  // Generate the *next* challenge in the background so "New challenge" is instant.
+  const startCodePrefetch = useCallback(() => {
+    // Guard against double-fetching: skip if one is already in flight or a
+    // result is already buffered and waiting to be shown.
+    if (prefetchInFlightRef.current || prefetchedChallengeRef.current) return;
+    prefetchInFlightRef.current = true;
+    const difficulty = difficultyFromSession(codeSessionAttempted, codeSessionCorrect);
+    const lesson = pickNextCodeLesson(null);
+    void fetchGeneratedChallenge(lesson.id, lesson.focus, difficulty, null).then((ch) => {
+      // ch may be null (generation failed) — that's fine; loadCodeChallenge
+      // will fall through to a curated challenge when nothing is buffered.
+      prefetchedChallengeRef.current = ch;
+      prefetchInFlightRef.current = false;
+    });
+  }, [
+    fetchGeneratedChallenge,
+    pickNextCodeLesson,
+    codeSessionAttempted,
+    codeSessionCorrect,
+  ]);
+
+  const loadCodeChallenge = useCallback(() => {
+    // reinforceTopicRef is set when the learner just missed a challenge; we
+    // read-and-clear it so the reinforcement only applies to this next load.
+    const reinforce = reinforceTopicRef.current;
+    reinforceTopicRef.current = null;
+
+    // After a miss: an instant, topic-matched curated challenge at easy difficulty.
+    if (reinforce) {
+      applyChallenge(curatedToChallenge(reinforce), "easy");
+      startCodePrefetch();
+      return;
     }
 
     // A generated challenge prepared in the background → show it instantly.
@@ -417,6 +515,9 @@ function NumpyExercisesContent() {
     if (!canRun || !challenge) return;
     setRunStatus("running");
     setRunMessage("Running…");
+    // attemptNum is this challenge's 0-based try count: 0 means first attempt,
+    // which is what distinguishes a "first try" bonus from a normal pass and a
+    // first miss (which triggers topic reinforcement).
     const attemptNum = codeAttemptRef.current;
     codeAttemptRef.current += 1;
     try {
@@ -431,6 +532,8 @@ function NumpyExercisesContent() {
           : outcome.message,
       );
 
+      // codeRewardClaimedRef latches once this challenge has been scored so
+      // re-running a solved challenge can't farm XP or double-count progress.
       if (!codeRewardClaimedRef.current) {
         setCodeSessionAttempted((n) => n + 1);
         if (outcome.passed) {

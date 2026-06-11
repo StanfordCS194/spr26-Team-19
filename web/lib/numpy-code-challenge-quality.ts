@@ -599,6 +599,8 @@ export function isWeakCodeChallenge(
     /\b(a|b|x|m|arr|data|col|matrix)\b/.test(a),
   );
 
+  // Every declared source array must actually be *used* in a derivation check.
+  // Otherwise the answer check could ignore it and accept a hard-coded literal.
   const sourceVars = sourceVarsFromChecks(checks);
   const derivedAsserts = asserts.filter((a) => !a.includes("isinstance("));
   for (const v of sourceVars) {
@@ -608,6 +610,8 @@ export function isWeakCodeChallenge(
     }
   }
 
+  // Reject drills that only probe metadata (shape/len/dtype) without ever
+  // comparing actual array values — those are guessable without real NumPy ops.
   const onlyMetadata = asserts.every(
     (a) =>
       /shape|len\(|ndim|size|is not None|\.item\(\)/.test(a) && !a.includes("array_equal"),
@@ -638,6 +642,16 @@ export function isWeakCodeChallenge(
   return null;
 }
 
+/**
+ * Pick a curated challenge, narrowing from most- to least-specific so the
+ * learner gets the closest topic match available, and only repeats (ignores
+ * excludeIds) as an absolute last resort:
+ *   1. exact curriculum challenge for this focus,
+ *   2. curated challenge whose topic slug matches the resolved lesson,
+ *   3. any unseen curriculum challenge,
+ *   4. any unseen curated challenge,
+ *   5. anything at all (excludeIds relaxed).
+ */
 export function pickCuratedCodeChallenge(
   focusTopic?: string,
   excludeIds: string[] = [],
@@ -663,6 +677,8 @@ export function pickCuratedCodeChallenge(
     return curriculumPool[Math.floor(Math.random() * curriculumPool.length)]!;
   }
 
+  // Last resort: if every curated challenge has been excluded, relax the
+  // exclude list rather than returning nothing.
   const pool = CURATED_CODE_CHALLENGES.filter((c) => !excludeIds.includes(c.id));
   const choices = pool.length > 0 ? pool : CURATED_CODE_CHALLENGES;
   return choices[Math.floor(Math.random() * choices.length)]!;

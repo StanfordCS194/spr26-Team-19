@@ -169,9 +169,13 @@ export async function POST(req: Request) {
   const basePrompt = buildPrompt(difficulty, lessonContext, reinforce, seenBlock);
 
   let challenge: ParsedChallenge | null = null;
+  // Feedback from the prior attempt's QA/review, fed back into the prompt so the
+  // generator can correct the specific issue instead of blindly retrying.
   let retryFeedback = "";
   let source: "generated" | "generated-unreviewed" | "curriculum" | "curated" = "generated";
 
+  // Up to 3 passes: generate → cheap programmatic QA → LLM review. Any failure
+  // records feedback and retries; exhausting all 3 falls back to a curated drill.
   for (let attempt = 0; attempt < 3; attempt++) {
     const retryNote = retryFeedback
       ? `\nFIX THESE QA ISSUES:\n${retryFeedback}\n`
@@ -184,6 +188,8 @@ export async function POST(req: Request) {
       continue;
     }
 
+    // Pass 1 — fast, deterministic, free: reject prompts with code literals or
+    // checks that are shortcuttable before spending a second LLM call on review.
     const programmaticReason =
       (promptHasCodeLiterals(challenge.prompt)
         ? "prompt contains code literals"
@@ -200,6 +206,8 @@ export async function POST(req: Request) {
       continue;
     }
 
+    // Pass 2 — second LLM judges wording/difficulty/check-alignment and may
+    // return a clearer revisedPrompt instead of an outright rejection.
     const review = await reviewCodeChallengeWithLlm(apiKey, reviewModel, {
       id: challenge.id,
       topic: challenge.topic,
@@ -213,6 +221,8 @@ export async function POST(req: Request) {
     });
 
     if (!review) {
+      // Reviewer unavailable (parse/API failure): trust programmatic QA rather
+      // than discarding an otherwise-valid challenge. Tagged so we can tell apart.
       console.warn("Reviewer skipped; using programmatic QA only", {
         id: challenge.id,
         lesson: lesson.id,

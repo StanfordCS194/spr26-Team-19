@@ -54,6 +54,8 @@ Learner's current code:
 ${(body.learnerCode ?? "").slice(0, 2000)}
 \`\`\``;
 
+  // Keep only the last 12 turns: bounds token usage and latency while still
+  // giving the model enough recent context to follow the conversation.
   const history = (body.messages ?? [])
     .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
     .slice(-12)
@@ -84,6 +86,9 @@ ${(body.learnerCode ?? "").slice(0, 2000)}
   const decoder = new TextDecoder();
   let buffer = "";
 
+  // Re-stream Groq's OpenAI-style SSE to the client as plain text deltas, so the
+  // browser can render the reply token-by-token instead of waiting for the full
+  // completion. We parse the SSE here and forward only the content chunks.
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = upstream.body!.getReader();
@@ -92,6 +97,8 @@ ${(body.learnerCode ?? "").slice(0, 2000)}
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+          // A network chunk can split mid-line, so split on newlines and keep
+          // the trailing partial in `buffer` to prepend to the next chunk.
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
           for (const line of lines) {
@@ -99,6 +106,7 @@ ${(body.learnerCode ?? "").slice(0, 2000)}
             if (!trimmed.startsWith("data:")) continue;
             const data = trimmed.slice(5).trim();
             if (data === "[DONE]") {
+              // Sentinel marking end of stream — close and stop reading.
               controller.close();
               return;
             }

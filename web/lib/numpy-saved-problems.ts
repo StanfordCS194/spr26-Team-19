@@ -104,6 +104,10 @@ const EMPTY: SavedProblem[] = [];
 
 export function getSavedProblemsSnapshot(): SavedProblem[] {
   if (typeof window === "undefined") return EMPTY;
+  // useSyncExternalStore requires a *stable* reference when nothing changed, or
+  // React loops forever. We cache the parsed array keyed by the raw storage
+  // string (scoped key + value, joined by a NUL so the boundary can't collide),
+  // and only re-parse when that raw string actually differs.
   const key = storageKey();
   const raw = `${key}\u0000${window.localStorage.getItem(key) ?? ""}`;
   if (raw === cachedRaw) return cachedValue;

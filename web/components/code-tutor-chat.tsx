@@ -65,11 +65,15 @@ export function CodeTutorChat({ challenge, learnerCode }: Props) {
     const content = text.trim();
     if (!content || streaming) return;
 
+    // Optimistically append the user turn plus an empty assistant bubble; the
+    // empty bubble is what the streamed tokens fill in (and shows the typing dots).
     const next: ChatMessage[] = [...messages, { role: "user", content }];
     setMessages([...next, { role: "assistant", content: "" }]);
     setInput("");
     setStreaming(true);
 
+    // Track the in-flight request so a new challenge / unmount can abort it
+    // (see the challenge.id effect) without a stale stream writing into state.
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -89,6 +93,8 @@ export function CodeTutorChat({ challenge, learnerCode }: Props) {
 
       if (!res.ok || !res.body) throw new Error("unavailable");
 
+      // The route streams plain-text deltas; accumulate them and rewrite the
+      // last (assistant) message on each chunk so the reply grows live.
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -113,6 +119,8 @@ export function CodeTutorChat({ challenge, learnerCode }: Props) {
         });
       }
     } catch (err) {
+      // An aborted request is intentional (challenge changed) — don't surface an
+      // error bubble, just bail and let the fresh conversation take over.
       if (controller.signal.aborted) return;
       setMessages((prev) => {
         const copy = prev.slice();
